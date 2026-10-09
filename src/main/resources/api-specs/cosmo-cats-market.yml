@@ -1,0 +1,424 @@
+openapi: 3.0.3
+info:
+  title: Cosmo Cats Intergalactic Marketplace API
+  version: 1.0.0-draft
+  description: |
+    Laboratory API for Product CRUD backed by in-memory mock data.
+    Data resets when the application restarts. PUT replaces all editable fields
+    of an existing product and never creates a missing product.
+    Pagination is zero-based, in insertion order, without database consistency guarantees.
+    The external catalog lookup demonstrates a third-party RestClient integration.
+    External products are not persisted and do not use local cosmic-name validation.
+    Error responses follow RFC 9457 (https://www.rfc-editor.org/rfc/rfc9457).
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+tags:
+  - name: Products
+    description: Local marketplace Product CRUD
+  - name: External catalog
+    description: Read-only third-party catalog integration
+paths:
+  /api/products:
+    get:
+      tags: [Products]
+      operationId: listProducts
+      summary: Get a page of products
+      description: A page beyond the available products returns empty content with the current totalElements.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          description: Zero-based page index.
+          schema:
+            type: integer
+            format: int32
+            minimum: 0
+            maximum: 2147483647
+            default: 0
+        - name: size
+          in: query
+          required: false
+          description: Maximum number of products in the page.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: Requested product page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+              example:
+                content:
+                  - id: 00000000-0000-0000-0000-000000000001
+                    name: Star Antigravity Yarn
+                    description: A floating yarn ball for intergalactic cats.
+                    price: 19.99
+                    category: TOYS
+                    sellerEmail: toys@cosmo-cats.market
+                page: 0
+                size: 1
+                totalElements: 3
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Products]
+      operationId: createProduct
+      summary: Create a product
+      description: Assigns a new UUID and stores the validated product in memory.
+      requestBody:
+        $ref: '#/components/requestBodies/ProductInput'
+      responses:
+        '201':
+          description: Product created.
+          headers:
+            Location:
+              description: Relative URI of the newly created product.
+              schema:
+                type: string
+                format: uri-reference
+                example: /api/products/00000000-0000-0000-0000-000000000001
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags: [Products]
+      operationId: getProduct
+      summary: Get a product by UUID
+      responses:
+        '200':
+          description: Product found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    put:
+      tags: [Products]
+      operationId: updateProduct
+      summary: Replace an existing product
+      description: All editable fields are required. The product ID remains unchanged.
+      requestBody:
+        $ref: '#/components/requestBodies/ProductInput'
+      responses:
+        '200':
+          description: Product updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Products]
+      operationId: deleteProduct
+      summary: Delete a product by UUID
+      responses:
+        '204':
+          description: Product deleted. The response has no body.
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/products/external/{externalId}:
+    get:
+      tags: [External catalog]
+      operationId: getExternalCatalogProduct
+      summary: Look up a product in the third-party DummyJSON catalog
+      description: |
+        Uses GET https://dummyjson.com/products/{externalId} through Spring RestClient.
+        Returns selected provider fields without modifying the local marketplace.
+        Provider errors other than 404, invalid responses and transport failures return 502.
+      parameters:
+        - name: externalId
+          in: path
+          required: true
+          description: Positive integer product ID in the external catalog.
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+            example: 1
+      responses:
+        '200':
+          description: External product found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogProduct'
+        '400':
+          $ref: '#/components/responses/ValidationFailure'
+        '404':
+          $ref: '#/components/responses/ProductNotFound'
+        '502':
+          $ref: '#/components/responses/ExternalCatalogFailure'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  parameters:
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: UUID assigned by the marketplace when the product is created.
+      schema:
+        type: string
+        format: uuid
+        example: 00000000-0000-0000-0000-000000000001
+  requestBodies:
+    ProductInput:
+      required: true
+      description: All five editable fields are required and must not be null.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProductRequest'
+          example:
+            name: Star Antigravity Yarn
+            description: A floating yarn ball for intergalactic cats.
+            price: 19.99
+            category: TOYS
+            sellerEmail: toys@cosmo-cats.market
+  schemas:
+    ProductRequest:
+      type: object
+      required: [name, description, price, category, sellerEmail]
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 100
+          pattern: '\b([sS][tT][aA][rR]|[gG][aA][lL][aA][xX][yY]|[cC][oO][mM][eE][tT])\b'
+          description: Nonblank. Must contain the whole word star, galaxy or comet, case-insensitively (@CosmicWordCheck).
+          example: Star Antigravity Yarn
+        description:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          pattern: '\S'
+          description: Nonblank product description.
+          example: A floating yarn ball for intergalactic cats.
+        price:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 9999999999.99
+          multipleOf: 0.01
+          description: Greater than zero; at most 10 integer digits and 2 decimal places. Stored as BigDecimal.
+          example: 19.99
+        category:
+          $ref: '#/components/schemas/Category'
+        sellerEmail:
+          type: string
+          format: email
+          minLength: 1
+          maxLength: 254
+          description: Nonblank seller contact email, validated with Jakarta @Email.
+          example: toys@cosmo-cats.market
+    Category:
+      type: string
+      enum: [TOYS, FOOD, ACCESSORIES]
+      description: Supported marketplace categories; enum values are case-sensitive.
+    Product:
+      allOf:
+        - $ref: '#/components/schemas/ProductRequest'
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: string
+              format: uuid
+              readOnly: true
+              description: Server-assigned product UUID.
+    ProductPage:
+      type: object
+      required: [content, page, size, totalElements]
+      properties:
+        content:
+          type: array
+          description: Products in this page, in insertion order; may be empty.
+          items:
+            $ref: '#/components/schemas/Product'
+        page:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 2147483647
+          description: Requested zero-based page index.
+        size:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          description: Requested page size, which may exceed the number of returned products.
+        totalElements:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Total number of local products in the snapshot used for this request.
+    CatalogProduct:
+      type: object
+      required: [id, title, description, price]
+      properties:
+        id:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 2147483647
+          description: External provider ID, unrelated to local UUIDs.
+        title:
+          type: string
+          minLength: 1
+          pattern: '\S'
+          description: Original nonblank provider title; cosmic-name validation does not apply.
+        description:
+          type: string
+          description: Original provider description.
+        price:
+          type: number
+          minimum: 0
+          description: Original provider price; no local price precision constraint applies.
+    Problem:
+      type: object
+      description: |
+        RFC 9457 Problem Details. status matches the HTTP response status; instance
+        identifies the request path. Clients must ignore unrecognized extension members.
+        Framework errors such as 415 use type about:blank and the HTTP reason as title.
+      required: [type, title, status, detail, instance]
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Stable problem type URI.
+          example: https://cosmo-cats.market/errors/validation
+        title:
+          type: string
+          description: Human-readable summary of the problem type.
+          example: Validation failed
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: HTTP status code of this response.
+          example: 400
+        detail:
+          type: string
+          description: Explanation of this occurrence and how to correct it.
+          example: "Field 'price' must be greater than 0."
+        instance:
+          type: string
+          format: uri-reference
+          description: Request path where the problem occurred.
+          example: /api/products
+        errors:
+          type: array
+          description: Present for validation errors; lists each field or parameter and its violation.
+          items:
+            $ref: '#/components/schemas/ValidationError'
+    ValidationError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+          description: JSON field name, path/query parameter name or body for unreadable JSON.
+          example: price
+        message:
+          type: string
+          description: Validation rule violated by this field.
+          example: must be greater than 0
+  responses:
+    ValidationFailure:
+      description: Missing/invalid fields, malformed JSON, invalid UUID or invalid pagination/lookup parameters.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://cosmo-cats.market/errors/validation
+            title: Validation failed
+            status: 400
+            detail: "Field 'price' must be greater than 0."
+            instance: /api/products
+            errors:
+              - field: price
+                message: must be greater than 0
+    ProductNotFound:
+      description: No local product with this UUID or no external product with this provider ID.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://cosmo-cats.market/errors/not-found
+            title: Product not found
+            status: 404
+            detail: "Product '00000000-0000-0000-0000-000000000099' was not found."
+            instance: /api/products/00000000-0000-0000-0000-000000000099
+    ExternalCatalogFailure:
+      description: Provider HTTP error other than 404, invalid provider response, connection failure or timeout.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://cosmo-cats.market/errors/external-catalog
+            title: External catalog unavailable
+            status: 502
+            detail: External catalog is temporarily unavailable.
+            instance: /api/products/external/1
+    UnsupportedMediaType:
+      description: Request Content-Type is unsupported; send application/json.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Unsupported Media Type
+            status: 415
+            detail: "Content-Type 'text/plain' is not supported."
+            instance: /api/products
+    InternalError:
+      description: Unexpected server error without implementation details in the response.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://cosmo-cats.market/errors/internal
+            title: Internal server error
+            status: 500
+            detail: An unexpected error occurred. Please try again later.
+            instance: /api/products

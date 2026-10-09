@@ -18,14 +18,14 @@ class ApiContractTests {
             Map<String, Object> contract = new Yaml().load(input);
             assertThat(contract.get("openapi")).isEqualTo("3.0.3");
             Map<?, ?> paths = (Map<?, ?>) contract.get("paths");
-            Map<?, ?> collection = (Map<?, ?>) paths.get("/api/products");
+            Map<?, ?> collection = (Map<?, ?>) paths.get("/api/v1/products");
             assertThat(collection.containsKey("get")).isTrue();
             assertThat(collection.containsKey("post")).isTrue();
-            Map<?, ?> product = (Map<?, ?>) paths.get("/api/products/{id}");
+            Map<?, ?> product = (Map<?, ?>) paths.get("/api/v1/products/{id}");
             assertThat(product.containsKey("get")).isTrue();
             assertThat(product.containsKey("put")).isTrue();
             assertThat(product.containsKey("delete")).isTrue();
-            assertThat(paths.containsKey("/api/products/external/{externalId}")).isTrue();
+            assertThat(paths.containsKey("/api/v1/products/external/{externalId}")).isTrue();
             checkReferences(contract, contract);
         }
     }

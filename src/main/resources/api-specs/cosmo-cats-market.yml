@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Cosmo Cats Intergalactic Marketplace API
-  version: 1.0.0-draft
+  version: 1.0.0
   description: |
     Laboratory API for Product CRUD backed by in-memory mock data.
     Data resets when the application restarts. PUT replaces all editable fields
@@ -19,7 +19,7 @@ tags:
   - name: External catalog
     description: Read-only third-party catalog integration
 paths:
-  /api/products:
+  /api/v1/products:
     get:
       tags: [Products]
       operationId: listProducts
@@ -84,7 +84,7 @@ paths:
               schema:
                 type: string
                 format: uri-reference
-                example: /api/products/00000000-0000-0000-0000-000000000001
+                example: /api/v1/products/00000000-0000-0000-0000-000000000001
           content:
             application/json:
               schema:
@@ -95,7 +95,7 @@ paths:
           $ref: '#/components/responses/UnsupportedMediaType'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/products/{id}:
+  /api/v1/products/{id}:
     parameters:
       - $ref: '#/components/parameters/ProductId'
     get:
@@ -150,7 +150,7 @@ paths:
           $ref: '#/components/responses/ProductNotFound'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/products/external/{externalId}:
+  /api/v1/products/external/{externalId}:
     get:
       tags: [External catalog]
       operationId: getExternalCatalogProduct
@@ -340,12 +340,18 @@ components:
           type: string
           format: uri-reference
           description: Request path where the problem occurred.
-          example: /api/products
+          example: /api/v1/products
         errors:
           type: array
-          description: Present for validation errors; lists each field or parameter and its violation.
+          description: RFC 9457 extension required for validation failures; lists each field or parameter and its violation.
           items:
             $ref: '#/components/schemas/ValidationError'
+    ValidationProblem:
+      description: Validation failure with a required errors extension identifying individual violations.
+      allOf:
+        - $ref: '#/components/schemas/Problem'
+        - type: object
+          required: [errors]
     ValidationError:
       type: object
       required: [field, message]
@@ -364,13 +370,13 @@ components:
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: '#/components/schemas/ValidationProblem'
           example:
             type: https://cosmo-cats.market/errors/validation
             title: Validation failed
             status: 400
             detail: "Field 'price' must be greater than 0."
-            instance: /api/products
+            instance: /api/v1/products
             errors:
               - field: price
                 message: must be greater than 0
@@ -385,7 +391,7 @@ components:
             title: Product not found
             status: 404
             detail: "Product '00000000-0000-0000-0000-000000000099' was not found."
-            instance: /api/products/00000000-0000-0000-0000-000000000099
+            instance: /api/v1/products/00000000-0000-0000-0000-000000000099
     ExternalCatalogFailure:
       description: Provider HTTP error other than 404, invalid provider response, connection failure or timeout.
       content:
@@ -397,7 +403,7 @@ components:
             title: External catalog unavailable
             status: 502
             detail: External catalog is temporarily unavailable.
-            instance: /api/products/external/1
+            instance: /api/v1/products/external/1
     UnsupportedMediaType:
       description: Request Content-Type is unsupported; send application/json.
       content:
@@ -409,7 +415,7 @@ components:
             title: Unsupported Media Type
             status: 415
             detail: "Content-Type 'text/plain' is not supported."
-            instance: /api/products
+            instance: /api/v1/products
     InternalError:
       description: Unexpected server error without implementation details in the response.
       content:
@@ -421,4 +427,4 @@ components:
             title: Internal server error
             status: 500
             detail: An unexpected error occurred. Please try again later.
-            instance: /api/products
+            instance: /api/v1/products

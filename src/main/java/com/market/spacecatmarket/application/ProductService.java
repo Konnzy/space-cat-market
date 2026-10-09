@@ -1,22 +1,22 @@
 package com.market.spacecatmarket.application;
 
-import com.market.spacecatmarket.application.catalog.CatalogProduct;
-import com.market.spacecatmarket.application.catalog.ProductCatalogClient;
 import com.market.spacecatmarket.domain.Product;
 import com.market.spacecatmarket.domain.ProductRepository;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import org.springframework.stereotype.Service;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.List;
 import java.util.UUID;
 
 @Service
+@Validated
 public class ProductService {
     private final ProductRepository repository;
-    private final ProductCatalogClient catalogClient;
 
-    public ProductService(ProductRepository repository, ProductCatalogClient catalogClient) {
+    public ProductService(ProductRepository repository) {
         this.repository = repository;
-        this.catalogClient = catalogClient;
     }
 
     public Product create(Product product) {
@@ -24,10 +24,7 @@ public class ProductService {
         return product;
     }
 
-    public ProductPage findAll(int page, int size) {
-        if (page < 0 || size < 1 || size > 100) {
-            throw new IllegalArgumentException("Page must be non-negative and size must be between 1 and 100");
-        }
+    public ProductPage findAll(@Min(0) int page, @Min(1) @Max(100) int size) {
         List<Product> products = repository.findAll();
         long offset = (long) page * size;
         int fromIndex = (int) Math.min(offset, products.size());
@@ -50,9 +47,5 @@ public class ProductService {
         if (!repository.deleteById(id)) {
             throw new ProductNotFoundException(id);
         }
-    }
-
-    public CatalogProduct findExternalProduct(int id) {
-        return catalogClient.findById(id);
     }
 }

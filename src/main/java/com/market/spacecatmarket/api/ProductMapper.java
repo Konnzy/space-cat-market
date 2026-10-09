@@ -7,33 +7,27 @@ import com.market.spacecatmarket.api.dto.ProductResponse;
 import com.market.spacecatmarket.application.ProductPage;
 import com.market.spacecatmarket.application.catalog.CatalogProduct;
 import com.market.spacecatmarket.domain.Product;
-import org.springframework.stereotype.Component;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+import org.mapstruct.MappingConstants;
+import org.mapstruct.ReportingPolicy;
 
 import java.util.UUID;
 
-@Component
-public class ProductMapper {
+@Mapper(componentModel = MappingConstants.ComponentModel.SPRING,
+        unmappedTargetPolicy = ReportingPolicy.ERROR, imports = UUID.class)
+public interface ProductMapper {
 
-    public Product toDomain(ProductRequest request) {
-        return toDomain(UUID.randomUUID(), request);
-    }
+    @Mapping(target = "id", expression = "java(UUID.randomUUID())")
+    Product toDomain(ProductRequest request);
 
-    public Product toDomain(UUID id, ProductRequest request) {
-        return new Product(id, request.name(), request.description(), request.price(),
-                request.category(), request.sellerEmail());
-    }
+    @Mapping(target = "id", source = "id")
+    Product toDomain(UUID id, ProductRequest request);
 
-    public ProductResponse toDto(Product product) {
-        return new ProductResponse(product.id(), product.name(), product.description(), product.price(),
-                product.category(), product.sellerEmail());
-    }
+    ProductResponse toDto(Product product);
 
-    public ProductPageResponse toDto(ProductPage page) {
-        return new ProductPageResponse(page.content().stream().map(this::toDto).toList(),
-                page.page(), page.size(), page.totalElements());
-    }
+    @Mapping(target = "content", expression = "java(page.content().stream().map(this::toDto).toList())")
+    ProductPageResponse toDto(ProductPage page);
 
-    public CatalogProductResponse toDto(CatalogProduct product) {
-        return new CatalogProductResponse(product.id(), product.title(), product.description(), product.price());
-    }
+    CatalogProductResponse toDto(CatalogProduct product);
 }

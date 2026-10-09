@@ -3,6 +3,8 @@ package com.market.spacecatmarket.api.error;
 import com.market.spacecatmarket.application.ProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogUnavailableException;
+import com.market.spacecatmarket.domain.Category;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -23,6 +25,7 @@ import tools.jackson.core.JacksonException;
 
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -61,8 +64,13 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         String field = exception instanceof MethodArgumentTypeMismatchException mismatch
                 ? mismatch.getName() : Objects.requireNonNullElse(exception.getPropertyName(), "parameter");
-        String message = exception.getRequiredType() == UUID.class
-                ? "must be a valid UUID" : "must be a valid integer";
+        Class<?> requiredType = exception.getRequiredType();
+        String message = "must have a valid value for the expected type";
+        if (requiredType == UUID.class) {
+            message = "must be a valid UUID";
+        } else if (requiredType == int.class || requiredType == Integer.class) {
+            message = "must be a valid integer";
+        }
         return validation(List.of(new ValidationError(field, message)), request);
     }
 
@@ -77,10 +85,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                     .filter(Objects::nonNull).collect(Collectors.joining("."));
             message = "must have the documented JSON type and value";
             if (field.equals("category")) {
-                message = "must be one of: TOYS, FOOD, ACCESSORIES";
+                message = "must be one of: " + Arrays.stream(Category.values())
+                        .map(Category::name).collect(Collectors.joining(", "));
             }
         }
         return validation(List.of(new ValidationError(field, message)), request);
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Object> handleConstraintViolation(ConstraintViolationException exception, WebRequest request) {
+        List<ValidationError> errors = exception.getConstraintViolations().stream().map(violation -> {
+            String path = violation.getPropertyPath().toString();
+            String field = path.substring(path.lastIndexOf('.') + 1);
+            return new ValidationError(field, violation.getMessage());
+        }).toList();
+        return validation(errors, request);
     }
 
     @ExceptionHandler({ProductNotFoundException.class, CatalogProductNotFoundException.class})

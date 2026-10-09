@@ -15,6 +15,7 @@ import java.math.BigDecimal;
 
 @Component
 public class DummyJsonProductCatalogClient implements ProductCatalogClient {
+    private static final String INVALID_RESPONSE_MESSAGE = "External catalog returned an invalid product.";
     private final RestClient restClient;
 
     public DummyJsonProductCatalogClient(@Qualifier("catalogRestClient") RestClient restClient) {
@@ -26,17 +27,24 @@ public class DummyJsonProductCatalogClient implements ProductCatalogClient {
         try {
             DummyJsonProduct response = restClient.get().uri("/products/{id}", id)
                     .retrieve().body(DummyJsonProduct.class);
-            if (response == null || response.id() == null || response.id() != id
-                    || response.title() == null || response.title().isBlank()
-                    || response.description() == null || response.price() == null
-                    || response.price().signum() < 0) {
-                throw new CatalogUnavailableException("External catalog returned an invalid product.");
-            }
+            validateResponse(response, id);
             return new CatalogProduct(response.id(), response.title(), response.description(), response.price());
         } catch (HttpClientErrorException.NotFound exception) {
             throw new CatalogProductNotFoundException(id);
         } catch (RestClientException exception) {
             throw new CatalogUnavailableException("External catalog is temporarily unavailable.", exception);
+        }
+    }
+
+    private void validateResponse(DummyJsonProduct response, int expectedId) {
+        if (response == null || response.id() == null || response.id() != expectedId) {
+            throw new CatalogUnavailableException(INVALID_RESPONSE_MESSAGE);
+        }
+        if (response.title() == null || response.title().isBlank() || response.description() == null) {
+            throw new CatalogUnavailableException(INVALID_RESPONSE_MESSAGE);
+        }
+        if (response.price() == null || response.price().signum() < 0) {
+            throw new CatalogUnavailableException(INVALID_RESPONSE_MESSAGE);
         }
     }
 

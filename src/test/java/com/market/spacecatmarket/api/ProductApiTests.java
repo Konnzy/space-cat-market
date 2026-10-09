@@ -40,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class ProductApiTests {
-    private static final String PRODUCTS = "/api/products";
+    private static final String PRODUCTS = "/api/v1/products";
     private static final String MISSING_ID = "00000000-0000-0000-0000-000000000099";
 
     @Autowired

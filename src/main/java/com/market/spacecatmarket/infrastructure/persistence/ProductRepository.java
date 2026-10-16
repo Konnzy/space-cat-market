@@ -1,4 +1,6 @@
-package com.market.spacecatmarket.domain;
+package com.market.spacecatmarket.infrastructure.persistence;
+
+import com.market.spacecatmarket.domain.Product;
 
 import java.util.List;
 import java.util.Optional;

@@ -1,17 +1,16 @@
 package com.market.spacecatmarket.api;
 
-import com.market.spacecatmarket.api.dto.CatalogProductResponse;
 import com.market.spacecatmarket.api.dto.ProductPageResponse;
 import com.market.spacecatmarket.api.dto.ProductRequest;
 import com.market.spacecatmarket.api.dto.ProductResponse;
 import com.market.spacecatmarket.application.ProductPage;
-import com.market.spacecatmarket.application.catalog.CatalogProduct;
 import com.market.spacecatmarket.domain.Product;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingConstants;
 import org.mapstruct.ReportingPolicy;
 
+import java.util.List;
 import java.util.UUID;
 
 @Mapper(componentModel = MappingConstants.ComponentModel.SPRING,
@@ -19,15 +18,14 @@ import java.util.UUID;
 public interface ProductMapper {
 
     @Mapping(target = "id", expression = "java(UUID.randomUUID())")
-    Product toDomain(ProductRequest request);
+    Product toProduct(ProductRequest request);
 
     @Mapping(target = "id", source = "id")
-    Product toDomain(UUID id, ProductRequest request);
+    Product toProduct(UUID id, ProductRequest request);
 
-    ProductResponse toDto(Product product);
+    ProductResponse toProductDto(Product product);
 
-    @Mapping(target = "content", expression = "java(page.content().stream().map(this::toDto).toList())")
-    ProductPageResponse toDto(ProductPage page);
+    List<ProductResponse> toProductDtos(List<Product> products);
 
-    CatalogProductResponse toDto(CatalogProduct product);
+    ProductPageResponse toProductPageDto(ProductPage page);
 }

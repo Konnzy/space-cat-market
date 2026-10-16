@@ -1,10 +1,13 @@
 package com.market.spacecatmarket.api.error;
 
+import com.market.spacecatmarket.application.InvalidCursorException;
 import com.market.spacecatmarket.application.ProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogUnavailableException;
 import com.market.spacecatmarket.domain.Category;
 import jakarta.validation.ConstraintViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -13,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -29,18 +33,20 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @ControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final String ERROR_BASE = "https://cosmo-cats.market/errors/";
 
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         List<ValidationError> errors = exception.getBindingResult().getFieldErrors().stream()
-                .map(error -> new ValidationError(error.getField(), error.getDefaultMessage())).toList();
+                .map(error -> new ValidationError(error.getField(), error.isBindingFailure()
+                        ? "has an invalid value for the documented type"
+                        : Objects.requireNonNullElse(error.getDefaultMessage(), "is invalid"))).toList();
         return validation(errors, request);
     }
 
@@ -62,16 +68,29 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleTypeMismatch(TypeMismatchException exception,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        ResponseEntity<Object> response = super.handleTypeMismatch(exception, headers, status, request);
+        if (response == null || !(response.getBody() instanceof ProblemDetail body)) {
+            return response;
+        }
         String field = exception instanceof MethodArgumentTypeMismatchException mismatch
                 ? mismatch.getName() : Objects.requireNonNullElse(exception.getPropertyName(), "parameter");
-        Class<?> requiredType = exception.getRequiredType();
-        String message = "must have a valid value for the expected type";
-        if (requiredType == UUID.class) {
-            message = "must be a valid UUID";
-        } else if (requiredType == int.class || requiredType == Integer.class) {
-            message = "must be a valid integer";
-        }
-        return validation(List.of(new ValidationError(field, message)), request);
+        body.setType(URI.create(ERROR_BASE + "validation"));
+        body.setTitle("Validation failed");
+        body.setProperty("errors", List.of(new ValidationError(field,
+                Objects.requireNonNullElse(body.getDetail(), "has an invalid value"))));
+        log.warn("Request parameter conversion failed: path={}, field={}", requestPath(request), field);
+        return response;
+    }
+
+    @Override
+    protected ResponseEntity<Object> handleHttpMediaTypeNotSupported(HttpMediaTypeNotSupportedException exception,
+            HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        ProblemDetail body = exception.getBody();
+        body.setType(URI.create(ERROR_BASE + "unsupported-media-type"));
+        body.setDetail("Content-Type '%s' is not supported.".formatted(exception.getContentType()));
+        log.warn("Unsupported request content type: path={}, contentType={}",
+                requestPath(request), exception.getContentType());
+        return handleExceptionInternal(exception, body, headers, status, request);
     }
 
     @Override
@@ -104,26 +123,33 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler({ProductNotFoundException.class, CatalogProductNotFoundException.class})
     public ResponseEntity<Object> handleNotFound(RuntimeException exception, WebRequest request) {
+        log.info("Resource not found: path={}, detail={}", requestPath(request), exception.getMessage());
         return problem(HttpStatus.NOT_FOUND, "not-found", "Product not found", exception.getMessage(), request);
     }
 
     @ExceptionHandler(CatalogUnavailableException.class)
     public ResponseEntity<Object> handleCatalogUnavailable(CatalogUnavailableException exception, WebRequest request) {
-        logger.warn("External catalog request failed", exception);
+        log.error("External catalog request failed: path={}", requestPath(request), exception);
         return problem(HttpStatus.BAD_GATEWAY, "external-catalog", "External catalog unavailable",
                 exception.getMessage(), request);
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Object> handleUnexpected(Exception exception, WebRequest request) {
-        logger.error("Unexpected request failure", exception);
+        log.error("Unexpected request failure: path={}", requestPath(request), exception);
         return problem(HttpStatus.INTERNAL_SERVER_ERROR, "internal", "Internal server error",
                 "An unexpected error occurred. Please try again later.", request);
+    }
+
+    @ExceptionHandler(InvalidCursorException.class)
+    public ResponseEntity<Object> handleInvalidCursor(InvalidCursorException exception, WebRequest request) {
+        return validation(List.of(new ValidationError("cursor", exception.getMessage())), request);
     }
 
     private ResponseEntity<Object> validation(List<ValidationError> errors, WebRequest request) {
         List<ValidationError> sortedErrors = errors.stream().distinct()
                 .sorted(Comparator.comparing(ValidationError::field).thenComparing(ValidationError::message)).toList();
+        log.warn("Request validation failed: path={}, errors={}", requestPath(request), sortedErrors);
         String detail = sortedErrors.stream()
                 .map(error -> "Field '" + error.field() + "' " + error.message() + ".")
                 .collect(Collectors.joining(" "));
@@ -142,7 +168,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail body = ProblemDetail.forStatusAndDetail(status, detail);
         body.setType(URI.create(ERROR_BASE + type));
         body.setTitle(title);
-        body.setInstance(URI.create(((ServletWebRequest) request).getRequest().getRequestURI()));
+        body.setInstance(URI.create(requestPath(request)));
         return body;
+    }
+
+    private String requestPath(WebRequest request) {
+        return ((ServletWebRequest) request).getRequest().getRequestURI();
     }
 }

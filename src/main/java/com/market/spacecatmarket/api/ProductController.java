@@ -1,10 +1,12 @@
 package com.market.spacecatmarket.api;
 
-import com.market.spacecatmarket.api.dto.CatalogProductResponse;
 import com.market.spacecatmarket.api.dto.ProductPageResponse;
 import com.market.spacecatmarket.api.dto.ProductRequest;
 import com.market.spacecatmarket.api.dto.ProductResponse;
 import com.market.spacecatmarket.application.ProductService;
+import com.market.spacecatmarket.application.catalog.CatalogService;
+import com.market.spacecatmarket.application.catalog.dto.CatalogProductDto;
+import com.market.spacecatmarket.application.dto.PaginationRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -23,46 +25,49 @@ import java.net.URI;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/products")
+@RequestMapping("/api/v1/products")
 public class ProductController {
-    private final ProductService service;
-    private final ProductMapper mapper;
+    private final ProductService productService;
+    private final CatalogService catalogService;
+    private final ProductMapper productMapper;
 
-    public ProductController(ProductService service, ProductMapper mapper) {
-        this.service = service;
-        this.mapper = mapper;
+    public ProductController(ProductService productService, CatalogService catalogService, ProductMapper productMapper) {
+        this.productService = productService;
+        this.catalogService = catalogService;
+        this.productMapper = productMapper;
     }
 
     @PostMapping
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
-        ProductResponse product = mapper.toDto(service.create(mapper.toDomain(request)));
-        return ResponseEntity.created(URI.create("/api/products/" + product.id())).body(product);
+        ProductResponse product = productMapper.toProductDto(productService.create(productMapper.toProduct(request)));
+        return ResponseEntity.created(URI.create("/api/v1/products/" + product.id())).body(product);
     }
 
     @GetMapping
     public ProductPageResponse findAll(@RequestParam(defaultValue = "0") @Min(0) int page,
-                                       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        return mapper.toDto(service.findAll(page, size));
+                                       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+                                       @RequestParam(required = false) UUID cursor) {
+        return productMapper.toProductPageDto(productService.findAll(new PaginationRequest(page, size, cursor)));
     }
 
     @GetMapping("/{id}")
     public ProductResponse findById(@PathVariable UUID id) {
-        return mapper.toDto(service.findById(id));
+        return productMapper.toProductDto(productService.findById(id));
     }
 
     @PutMapping("/{id}")
     public ProductResponse update(@PathVariable UUID id, @Valid @RequestBody ProductRequest request) {
-        return mapper.toDto(service.update(mapper.toDomain(id, request)));
+        return productMapper.toProductDto(productService.update(productMapper.toProduct(id, request)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
-        service.deleteById(id);
+        productService.deleteById(id);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/external/{externalId}")
-    public CatalogProductResponse findExternalProduct(@PathVariable @Min(1) int externalId) {
-        return mapper.toDto(service.findExternalProduct(externalId));
+    public CatalogProductDto findExternalProduct(@PathVariable @Min(1) int externalId) {
+        return catalogService.findById(externalId);
     }
 }

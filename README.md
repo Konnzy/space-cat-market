@@ -1,37 +1,37 @@
 # Cosmo Cats Intergalactic Marketplace — лабораторна 1
 
-Повноцінна перша реалізація Product CRUD на Spring Boot 4.1.1 / Java 25.
-Поточна робоча гілка: `lab1-draft`.
+Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
+Гілка `lab1-fixes` містить виправлення self-review та зауважень викладача.
 
 ## Збірка та запуск
 
-Потрібен JDK 25. Maven завантажується через включений Maven Wrapper.
-У PowerShell з кореня проєкту:
+З кореня проєкту у PowerShell:
 
 ```powershell
 .\mvnw.cmd clean verify
 .\mvnw.cmd spring-boot:run
 ```
 
-Якщо залежності вже закешовані, збірка без мережі: `.\mvnw.cmd -o clean verify`.
-Базова адреса API: `http://localhost:8080`.
-Тести не звертаються до реального зовнішнього сервісу.
+За наявності закешованих залежностей: `.\mvnw.cmd -o clean verify`.
+API: `http://localhost:8080/api/v1/products`.
+Автоматичні тести та їхні Maven-залежності вилучені за вказівкою викладача: це матеріал ЛР2.
+Збірка підтверджує компіляцію та пакування; поведінку перевіряємо HTTP-запитами.
 
-## API
+## Контракт і CRUD
 
-OpenAPI 3.0.3: [src/main/resources/api-specs/cosmo-cats-market.yml](src/main/resources/api-specs/cosmo-cats-market.yml).
-Файл можна відкрити у Swagger Editor або імпортувати в Postman.
+[OpenAPI 3.0.3](src/main/resources/api-specs/cosmo-cats-market.yml) містить конкретні examples
+успішних відповідей та помилок для перегляду у Swagger Editor.
 
 | Метод | Шлях | Результат |
 | --- | --- | --- |
-| POST | `/api/products` | `201`, товар та заголовок `Location` |
-| GET | `/api/products?page=0&size=20` | `200`, `content`, `page`, `size`, `totalElements` |
-| GET | `/api/products/{id}` | `200`, товар; `404`, якщо відсутній |
-| PUT | `/api/products/{id}` | `200`, повністю оновлений товар; `404`, якщо відсутній |
-| DELETE | `/api/products/{id}` | `204` без тіла; `404`, якщо відсутній |
-| GET | `/api/products/external/{externalId}` | `200`, товар DummyJSON; `404` або `502` для помилок провайдера |
+| POST | `/api/v1/products` | `201`, товар і Location |
+| GET | `/api/v1/products?page=0&size=20` | `200`, сторінка товарів |
+| GET | `/api/v1/products/{id}` | `200` або `404` |
+| PUT | `/api/v1/products/{id}` | `200` або `404`, заміна всіх редагованих полів |
+| DELETE | `/api/v1/products/{id}` | `204` без тіла або `404` |
+| GET | `/api/v1/products/external/{externalId}` | `200`, товар каталогу; `404` або `502` для збоїв |
 
-Створення й оновлення приймають однакове JSON-тіло:
+Тіло POST/PUT:
 
 ```json
 {
@@ -43,23 +43,37 @@ OpenAPI 3.0.3: [src/main/resources/api-specs/cosmo-cats-market.yml](src/main/res
 }
 ```
 
-Усі п'ять полів обов'язкові й не можуть бути `null`. `name`: 3–100 символів,
-містить окреме слово `star`, `galaxy` або `comet` без урахування регістру.
-`description`: 1–1000 символів, не лише пробіли. `price`: більше 0,
-до 10 цифр у цілій частині й до 2 після десяткової крапки.
-`category`: `TOYS`, `FOOD` або `ACCESSORIES`.
-`sellerEmail`: непорожня адреса, до 254 символів, перевірена `@Email`.
-UUID генерується сервером; PUT зберігає ID та замінює всі редаговані поля.
+Усі поля обов'язкові й не можуть бути null. `name`: 3–100 символів, містить окреме слово
+star, galaxy або comet без урахування регістру (`@CosmicWordCheck`). `description`: 1–1000
+символів, не лише пробіли. `price`: більше 0, до 10 цифр у цілій частині й до 2 після крапки.
+`category`: TOYS, FOOD або ACCESSORIES. `sellerEmail`: непорожня адреса до 254 символів,
+перевіряється `@Email`. POST генерує UUID, PUT зберігає ID з URL. ULID залишився навчальною рекомендацією.
 
-`page` починається з 0; `size` — від 1 до 100. Порядок — порядок додавання.
-Сторінка за межами списку повертає порожній `content` та актуальний `totalElements`.
-Пагінація працює над знімком колекції в пам'яті; питання стабільності сторінок
-при паралельних змінах у БД залишене для наступної лабораторної.
+## Пагінація
+
+Контролер перевіряє параметри `page` і `size` через `@Min` / `@Max` безпосередньо в сигнатурі методу,
+потім передає їх і необов'язковий `cursor` до сервісу через спільний `PaginationRequest`.
+Початкові значення: page=0, size=20; межі: page >= 0, size від 1 до 100.
+Без cursor працює offset page/size у порядку додавання товарів.
+З cursor результати починаються після вказаного UUID в тому самому порядку; page ігнорується,
+а page у відповіді дорівнює 0. Size діє в обох режимах.
+
+```text
+GET /api/v1/products?size=1
+GET /api/v1/products?size=1&cursor=00000000-0000-0000-0000-000000000001
+```
+
+Envelope: content, page, size, totalElements, nextCursor. TotalElements — розмір усього локального
+каталогу в знімку запиту. NextCursor — останній повернений ID, якщо далі є товари; інакше null.
+Порожній каталог: `200`, content=[], totalElements=0. Сторінка за межами непорожнього каталогу:
+`200`, content=[], фактичний totalElements. GET списку не має штучного сценарію 404.
+Некоректний, невідомий або видалений cursor повертає 400.
+Зміни між запитами й стабільність DB/keyset-пагінації залишаються матеріалом наступної лабораторної.
 
 ## Помилки
 
-`@ControllerAdvice` використовує Spring `ProblemDetail` та
-[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html), тип вмісту — `application/problem+json`:
+Глобальний `@ControllerAdvice` використовує Spring ProblemDetail,
+[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html) та application/problem+json:
 
 ```json
 {
@@ -67,68 +81,67 @@ UUID генерується сервером; PUT зберігає ID та за�
   "title": "Validation failed",
   "status": 400,
   "detail": "Field 'price' must be greater than 0.",
-  "instance": "/api/products",
+  "instance": "/api/v1/products",
   "errors": [{"field": "price", "message": "must be greater than 0"}]
 }
 ```
 
-`errors` містить усі порушення з назвами полів або параметрів.
-Некоректний UUID, JSON, категорія та параметри пагінації повертають `400`.
-Відсутній товар — `404`, недоступний зовнішній каталог — `502`,
-непідтримуваний Content-Type — `415`, неочікувана помилка — `500`.
-Внутрішні подробиці не потрапляють до відповіді `500`.
+ValidationError залишається DTO одного порушення; errors обов'язкове для валідації.
+Для помилок конвертації path-параметрів handler доповнює стандартний ProblemDetail Spring
+нашим errors. Значення категорії формуються з Category.values().
+400: неправильні поля/параметри, cursor або JSON; 404: відсутній товар за ID;
+415: непідтримуваний Content-Type; 502: недоступний каталог або невалідна відповідь;
+500: неочікуваний збій без внутрішніх подробиць у відповіді.
 
-## Межі шарів
+## Організація коду
 
-- `domain`: прості незмінні `Product`, `Category`, `Cart`, `Order` та інтерфейс `ProductRepository`.
-  Cart і Order містять знімки списків товарів; Order обчислює суму через `BigDecimal`.
-  Для них не створено окремих API чи сценаріїв оформлення замовлення.
-- `application`: `ProductService`, результат пагінації, помилки сценаріїв;
-  `ProductCatalogClient` — інтерфейс для стороннього каталогу.
-- `api`: контролер, request/response DTO, ручний клас `ProductMapper`,
-  Jakarta Bean Validation і `@CosmicWordCheck`, глобальний обробник помилок.
-- `infrastructure`: синхронізований `Map<UUID, Product>` у `InMemoryProductRepository`
-  та реалізація клієнта DummyJSON через Spring `RestClient`.
+- domain: незмінні Product, Category, Cart, Order без залежностей від Spring.
+- application: ProductService, ProductPage, спільний application.dto.PaginationRequest;
+  CatalogService із зовнішнім запитом, обробкою помилок і окремим методом перевірки відповіді.
+  application.catalog.dto.CatalogProductDto використовують сервіс і контролер.
+- api: контролер, DTO локального API, Jakarta-валідація, MapStruct ProductMapper та handler.
+- infrastructure.persistence: ProductRepository поруч з InMemoryProductRepository.
+  Сервіс залежить від інтерфейсу; сховище — синхронізований змінюваний LinkedHashMap.
+- infrastructure.catalog: створення RestClient і ввімкнення Spring resilience.
 
-Інтерфейси введені для сховища й зовнішнього сервісу; сервіс та маппер — звичайні класи.
-JPA, Hibernate ORM, Spring Data Repository, реальна БД та MapStruct не використовуються.
-`Hibernate Validator` є реалізацією Jakarta Bean Validation, а не ORM.
+MapStruct генерує ProductMapperImpl у target/generated-sources/annotations; ручна реалізація була
+в lab1-draft. Колекція content мапиться автоматично, response DTO створює незмінну копію списку.
+Cart і Order не мають додаткових API чи workflow. JPA, Hibernate ORM, Spring Data і БД не використовуються.
+Hibernate Validator є реалізацією Jakarta Bean Validation, а не ORM.
 
-## Mock-дані й зовнішній сервіс
+## Mock-дані й зовнішній каталог
 
-При старті у пам'ять додаються:
+При старті: 00000000-0000-0000-0000-000000000001 — Star Antigravity Yarn;
+00000000-0000-0000-0000-000000000002 — Galaxy Cosmic Milk;
+00000000-0000-0000-0000-000000000003 — Comet Collar. Перезапуск відновлює mock-дані.
 
-- `00000000-0000-0000-0000-000000000001`: Star Antigravity Yarn;
-- `00000000-0000-0000-0000-000000000002`: Galaxy Cosmic Milk;
-- `00000000-0000-0000-0000-000000000003`: Comet Collar.
+[DummyJSON](https://dummyjson.com/docs/products) читається через GET /products/{id}.
+Товари не зберігаються локально; повертаються id, title, description, price.
+Космічна валідація не застосовується до зовнішніх назв.
+Налаштування: catalog.base-url, catalog.connect-timeout=2s, catalog.read-timeout=3s.
+CATALOG_BASE_URL дозволяє використати контрольований HTTP-сервер.
+Локальний CRUD і запуск застосунку не звертаються до каталогу.
 
-CRUD змінює це сховище. Після перезапуску дані повертаються до початкових.
+Вбудований Spring 7 `@Retryable` повторює транспортні збої та HTTP 500/502/503/504:
+дві повторні спроби після початкової, із затримками 200 і 400 мс.
+Інші HTTP-помилки, зокрема 404, та невалідні товари не повторюються.
+404 провайдера стає локальним 404; решта остаточних збоїв — 502.
 
-Для обов'язкової інтеграції вибрано публічний тестовий
-[каталог DummyJSON](https://dummyjson.com/docs/products): `GET /products/{id}`.
-Endpoint `/api/products/external/1` показує запит через `RestClient` і повертає
-`id`, `title`, `description`, `price` провайдера. Він не створює локальний товар.
-Зовнішні назви не підпадають під локальне правило космічних слів.
-Запуск застосунку й локальний CRUD не потребують доступу до DummyJSON;
-зовнішній endpoint потребує мережі.
+## Логування і ручна перевірка
 
-Налаштування в `application.properties`: `catalog.base-url`, `catalog.connect-timeout=2s`,
-`catalog.read-timeout=3s`. Їх можна перевизначити, наприклад змінною `CATALOG_BASE_URL`.
-Без автоматичних повторів: `404` провайдера відображається як `404`, інші HTTP-помилки,
-порожні/некоректні відповіді й транспортні збої — як `502`.
+SLF4J: початкове наповнення сховища й успішні зміни товарів — INFO; читання, пагінація,
+зовнішні запити та їхня тривалість — DEBUG; валідація, збої спроб і повтори з номером/затримкою — WARN;
+остаточні зовнішні та неочікувані збої — ERROR зі stack trace у handler. Відсутній ресурс — INFO.
+Повні товари й email продавців у повідомлення не додаються. Пакет застосунку налаштований на DEBUG;
+рівень перевизначається через logging.level.com.market.spacecatmarket.
 
-## Перевірка вимог
+Перевірка після збірки:
 
-- CRUD-контракт у потрібній папці: endpoints, DTO, обмеження, коди та приклади помилок.
-- RFC 9457, глобальний `@ControllerAdvice`, подробиці кожного порушення валідації.
-- Чотири доменні моделі та відокремлені domain/application/API/infrastructure.
-- DTO і ручний `ProductMapper.toDomain` / `toDto`, без MapStruct.
-- Сервісний CRUD та окремий in-memory repository з mock-даними, без БД.
-- Дійсна інтеграція `RestClient` з окремою реалізацією й обробкою збоїв.
-- Jakarta `@NotNull`, `@Size`, `@Email` та кастомна `@CosmicWordCheck`.
-- `page` / `size` і paged envelope.
-- Тести HTTP CRUD, валідації, пагінації, помилок і RestClient через `MockRestServiceServer`;
-  перевірка читання YAML та локальних `$ref`, мінімальних правил Order/Cart.
+1. POST → GET → PUT → GET → DELETE, Location і сталість UUID.
+2. Page/size, cursor/nextCursor, кінець списку й порожній каталог з 200.
+3. Bean Validation, CosmicWordCheck, неправильні UUID/JSON/category, 404 та 415.
+4. На контрольованому HTTP-сервері: успіх, відновлення після тимчасових збоїв, вичерпання трьох спроб,
+   одиничні 404/інші 4xx/невалідні відповіді, timeout.
+5. У консолі: повідомлення відповідних рівнів, номери повторів і відсутність повних DTO.
 
-Maven Wrapper для Windows містить виправлення початкового маркера PowerShell-коментаря,
-щоб стандартні команди збірки працювали.
+Windows Maven Wrapper використовує виправлений PowerShell comment marker.

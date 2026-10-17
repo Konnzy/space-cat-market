@@ -12,11 +12,11 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 public record ProductRequest(
-        @NotNull @NotBlank @Size(min = 3, max = 100) @CosmicWordCheck String name,
-        @NotNull @NotBlank @Size(min = 1, max = 1000) String description,
+        @NotBlank @Size(min = 3, max = 100) @CosmicWordCheck String name,
+        @NotBlank @Size(min = 1, max = 1000) String description,
         @NotNull @DecimalMin(value = "0", inclusive = false, message = "must be greater than 0")
         @Digits(integer = 10, fraction = 2, message = "must have at most 10 integer digits and 2 decimal places")
         BigDecimal price,
         @NotNull Category category,
-        @NotNull @NotBlank @Email @Size(max = 254) String sellerEmail) {
+        @NotBlank @Email @Size(max = 254) String sellerEmail) {
 }

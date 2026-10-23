@@ -1,0 +1,106 @@
+# Adapted from the instructor's workflow:
+# https://github.com/Ekatereana/intergalactic-market-java-course/blob/1644d84/.github/workflows/pull_request.yml
+name: Build and Test Coverage
+
+on:
+  pull_request:
+    branches: [lab1-fixes, main, master]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [lab-2-tests]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Maven tests and coverage (Java 25)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Java 25 and cache Maven dependencies
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+          cache-dependency-path: |
+            pom.xml
+            .mvn/wrapper/maven-wrapper.properties
+
+      - name: Grant execute permission to Maven wrapper
+        run: chmod +x ./mvnw
+
+      - name: Build, test and enforce service coverage
+        run: ./mvnw --batch-mode --no-transfer-progress clean verify
+
+      - name: Check coverage reports and write summary
+        shell: bash
+        run: |
+          test -s target/site/jacoco/index.html
+          test -s target/site/jacoco/jacoco.xml
+          python3 - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          report = ET.parse("target/site/jacoco/jacoco.xml").getroot()
+
+          def coverage(element, metric):
+              counter = element.find(f"counter[@type='{metric}']")
+              if counter is None:
+                  return "n/a"
+              covered = int(counter.attrib["covered"])
+              total = covered + int(counter.attrib["missed"])
+              return f"{covered / total:.1%}" if total else "n/a"
+
+          rows = [("Entire project", report)]
+          for item in report.findall("package/class"):
+              name = item.attrib["name"].rsplit("/", 1)[-1]
+              if name.endswith(("Service", "Controller", "RetryPredicate")):
+                  rows.append((name, item))
+
+          test_reports = [ET.parse(path).getroot()
+                          for path in Path("target/surefire-reports").glob("TEST-*.xml")]
+          if not test_reports:
+              raise SystemExit("No Surefire test reports were generated.")
+          totals = {key: sum(int(item.attrib.get(key, "0")) for item in test_reports)
+                    for key in ("tests", "failures", "errors", "skipped")}
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              summary.write("## Tests and JaCoCo coverage\n\n")
+              summary.write(f"Tests: {totals['tests']}; failures: {totals['failures']}; "
+                            f"errors: {totals['errors']}; skipped: {totals['skipped']}.\n\n")
+              summary.write("Minimum required line coverage: **60% per service class**. "
+                            "Recommended: **80%**.\n\n")
+              summary.write("| Scope | Lines | Branches |\n| --- | ---: | ---: |\n")
+              for name, item in rows:
+                  summary.write(f"| {name} | {coverage(item, 'LINE')} | {coverage(item, 'BRANCH')} |\n")
+              summary.write("\nDownload the HTML/XML report from the jacoco-coverage artifact.\n")
+          PY
+
+      - name: Upload JaCoCo HTML and XML reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: jacoco-coverage
+          path: target/site/jacoco/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: surefire-test-reports
+          path: target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,7 +1,8 @@
-# Cosmo Cats Intergalactic Marketplace — лабораторна 1
+# Cosmo Cats Intergalactic Marketplace — лабораторні 1 та 2
 
 Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
 Гілка `lab1-fixes` містить виправлення self-review та зауважень викладача.
+Гілка `lab-2-tests` додає автоматичні тести, вимірювання покриття та GitHub Actions.
 
 ## Збірка та запуск
 
@@ -14,8 +15,70 @@ Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
 
 За наявності закешованих залежностей: `.\mvnw.cmd -o clean verify`.
 API: `http://localhost:8080/api/v1/products`.
-Автоматичні тести та їхні Maven-залежності вилучені за вказівкою викладача: це матеріал ЛР2.
-Збірка підтверджує компіляцію та пакування; поведінку перевіряємо HTTP-запитами.
+Команда `clean verify` компілює застосунок, запускає тести, створює звіт JaCoCo,
+перевіряє мінімальне покриття сервісів і пакує застосунок.
+
+## Лабораторна 2: автоматичні тести
+
+Тестові класи розташовані в `src/test/java/com/market/spacecatmarket`.
+Параметризовані випадки враховуються як окремі сценарії запуску:
+
+| Клас | Сценарії | Що перевіряється |
+| --- | ---: | --- |
+| ProductServiceTest | 16 | CRUD, помилки, offset- і cursor-пагінація; репозиторій підмінений Mockito |
+| CatalogServiceTest | 20 | HTTP-відповіді WireMock, JSON, помилки, відновлення і вичерпання retry |
+| ProductControllerTest | 102 | MockMvc, CRUD, валідація полів і параметрів, CosmicWordCheck, ProblemDetail |
+| Разом | 138 | Без помилок і пропусків |
+
+Контролерні тести використовують справжні Jakarta-валідацію, MapStruct-мапер і
+обробник помилок, а сервіси підміняють через `@MockitoBean`.
+WireMock запускає локальний HTTP-сервер на випадковому порту; `RestClient`
+звертається до нього. Реальні зовнішні API та база даних для тестів не потрібні.
+`CatalogService` створюється через Spring, тому тести перевіряють роботу `@Retryable`.
+
+Запуск усіх тестів або окремого класу у PowerShell:
+
+```powershell
+.\mvnw.cmd test
+.\mvnw.cmd -Dtest=ProductServiceTest test
+.\mvnw.cmd -Dtest=CatalogServiceTest test
+.\mvnw.cmd -Dtest=ProductControllerTest test
+.\mvnw.cmd clean verify
+```
+
+У Linux/macOS: `./mvnw --batch-mode --no-transfer-progress clean verify`.
+Після `test` доступні звіти:
+
+- `target/site/jacoco/index.html` — HTML-звіт із переходом до рядків коду;
+- `target/site/jacoco/jacoco.xml` — машинозчитуваний звіт покриття;
+- `target/surefire-reports/` — результати запуску тестів.
+
+JaCoCo у фазі `verify` вимагає щонайменше **60% покриття рядків кожного сервісного
+класу** в `application` та підпакетах. Рекомендований завданням рівень — **80%**.
+За результатом повного локального запуску: ProductService, CatalogService і
+CatalogRetryPredicate мають 100% покриття рядків та гілок, ProductController —
+100% рядків. Покриття рядків усього проєкту — 83,4%; непокриті класи залишаються у звіті.
+
+## GitHub Actions і здача ЛР2
+
+[`.github/workflows/pull_request.yml`](.github/workflows/pull_request.yml)
+адаптований із [прикладу викладача](https://github.com/Ekatereana/intergalactic-market-java-course/pull/1)
+під Maven Wrapper і Temurin Java 25.
+Workflow запускається після push у `lab-2-tests` та для PR у `lab1-fixes`,
+`main` або `master`. Він виконує `clean verify`, перевіряє наявність HTML/XML
+звіту JaCoCo та додає таблицю покриття до підсумку запуску.
+
+У GitHub Actions у завершеному запуску доступні артефакти:
+
+- `jacoco-coverage` — HTML- і XML-звіти JaCoCo;
+- `surefire-test-reports` — результати тестів.
+
+Артефакти зберігаються 14 днів і завантажуються також після невдалих перевірок,
+якщо відповідні файли встигли створитися.
+Непройдені тести, недостатнє покриття сервісу або відсутній звіт роблять pipeline червоним.
+
+Поки ЛР1 не отримала апрув, PR другої лабораторної має напрямок
+`lab-2-tests` → `lab1-fixes`. Злиття виконується лише після дозволу викладача.
 
 ## Контракт і CRUD
 

@@ -1,7 +1,7 @@
 # Cosmo Cats Intergalactic Marketplace — лабораторні 1 та 2
 
 Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
-Гілка `lab1-fixes` містить виправлення self-review та зауважень викладача.
+Гілка `lab1-fixes` містить виправлення self-review.
 Гілка `lab-2-tests` додає автоматичні тести, вимірювання покриття та GitHub Actions.
 
 ## Збірка та запуск
@@ -62,7 +62,7 @@ CatalogRetryPredicate мають 100% покриття рядків та гіл�
 ## GitHub Actions і здача ЛР2
 
 [`.github/workflows/pull_request.yml`](.github/workflows/pull_request.yml)
-адаптований із [прикладу викладача](https://github.com/Ekatereana/intergalactic-market-java-course/pull/1)
+адаптований із (https://github.com/Ekatereana/intergalactic-market-java-course/pull/1)
 під Maven Wrapper і Temurin Java 25.
 Workflow запускається після push у `lab-2-tests` та для PR у `lab1-fixes`,
 `main` або `master`. Він виконує `clean verify`, перевіряє наявність HTML/XML

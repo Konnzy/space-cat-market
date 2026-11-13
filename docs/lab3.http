@@ -1,0 +1,44 @@
+### 1. Створіть товар; скопіюйте UUID з відповіді в productId.
+@base = http://localhost:8080/api/v1
+@productId = REPLACE_WITH_PRODUCT_UUID
+@customerId = REPLACE_WITH_CUSTOMER_ID
+@orderId = REPLACE_WITH_ORDER_ID
+@orderNumber = REPLACE_WITH_ORDER_NUMBER
+
+POST {{base}}/products
+Content-Type: application/json
+
+{"name":"Star Antigravity Yarn","description":"A floating yarn ball","price":19.99,"category":"TOYS","sellerEmail":"seller@example.com"}
+
+### 2. Поповніть склад.
+POST {{base}}/products/{{productId}}/stock
+Content-Type: application/json
+
+{"quantity":10}
+
+### 3. Створіть покупця; скопіюйте id в customerId.
+POST {{base}}/customers
+Content-Type: application/json
+
+{"name":"Cosmo Cat","email":"cosmo@example.com"}
+
+### 4. Створіть замовлення; скопіюйте id та orderNumber.
+POST {{base}}/orders
+Content-Type: application/json
+
+{"customerId":{{customerId}},"items":[{"productId":"{{productId}}","quantity":2}]}
+
+### 5. Пошук за Natural ID.
+GET {{base}}/orders/by-number/{{orderNumber}}
+
+### 6. Завершіть замовлення, щоб воно потрапило до звіту.
+PUT {{base}}/orders/{{orderId}}/status
+Content-Type: application/json
+
+{"status":"COMPLETED"}
+
+### 7. Звіт: продані одиниці завершених замовлень за період [from, to).
+GET {{base}}/reports/popular-products?from=2020-01-01T00:00:00Z&to=2100-01-01T00:00:00Z
+
+### 8. Перегляньте категорії.
+GET {{base}}/categories

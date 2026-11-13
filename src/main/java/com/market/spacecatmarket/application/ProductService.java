@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 public class ProductService {
     private static final Logger log = LoggerFactory.getLogger(ProductService.class);
     private final ProductRepository repository;
@@ -19,6 +20,7 @@ public class ProductService {
         this.repository = repository;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Product create(Product product) {
         repository.add(product);
         log.info("Created product id={}", product.id());
@@ -58,6 +60,7 @@ public class ProductService {
         return repository.findById(id).orElseThrow(() -> new ProductNotFoundException(id));
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Product update(Product product) {
         if (!repository.update(product)) {
             throw new ProductNotFoundException(product.id());
@@ -66,6 +69,7 @@ public class ProductService {
         return product;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public void deleteById(UUID id) {
         if (!repository.deleteById(id)) {
             throw new ProductNotFoundException(id);

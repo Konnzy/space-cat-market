@@ -1,8 +1,16 @@
-# Cosmo Cats Intergalactic Marketplace — лабораторні 1 та 2
+# Cosmo Cats Intergalactic Marketplace — лабораторні 1–3
 
 Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
 Гілка `lab1-fixes` містить виправлення self-review.
 Гілка `lab-2-tests` додає автоматичні тести, вимірювання покриття та GitHub Actions.
+
+## Лабораторна 3: база даних
+
+Реалізовано PostgreSQL, Liquibase, JPA, транзакції та всі бонуси (+4 за умовою).
+Детальні схема, пояснення 3NF, міграції, API та тести: [docs/lab3.md](docs/lab3.md).
+Приклад повного сценарію: [docs/lab3.http](docs/lab3.http).
+Для запуску застосунку спочатку виконайте `docker compose up -d --wait`.
+Для тестів достатньо запущеного Docker: Testcontainers створює власну БД.
 
 ## Збірка та запуск
 
@@ -15,8 +23,10 @@ Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
 
 За наявності закешованих залежностей: `.\mvnw.cmd -o clean verify`.
 API: `http://localhost:8080/api/v1/products`.
+Остання перевірка ЛР3: **161 тест, 0 помилок/пропусків, 93,25% рядків і 80,52% гілок**.
+Докладний результат і склад інтеграційних тестів — у [docs/lab3.md](docs/lab3.md).
 Команда `clean verify` компілює застосунок, запускає тести, створює звіт JaCoCo,
-перевіряє мінімальне покриття сервісів і пакує застосунок.
+перевіряє щонайменше 80% покриття рядків усього проєкту й пакує застосунок.
 
 ## Лабораторна 2: автоматичні тести
 
@@ -33,7 +43,7 @@ API: `http://localhost:8080/api/v1/products`.
 Контролерні тести використовують справжні Jakarta-валідацію, MapStruct-мапер і
 обробник помилок, а сервіси підміняють через `@MockitoBean`.
 WireMock запускає локальний HTTP-сервер на випадковому порту; `RestClient`
-звертається до нього. Реальні зовнішні API та база даних для тестів не потрібні.
+звертається до нього. Реальні зовнішні API для цих тестів не потрібні. Нові інтеграційні тести ЛР3 використовують PostgreSQL у Testcontainers.
 `CatalogService` створюється через Spring, тому тести перевіряють роботу `@Retryable`.
 
 Запуск усіх тестів або окремого класу у PowerShell:
@@ -47,24 +57,22 @@ WireMock запускає локальний HTTP-сервер на випадк
 ```
 
 У Linux/macOS: `./mvnw --batch-mode --no-transfer-progress clean verify`.
-Після `test` доступні звіти:
+Після `clean verify` доступні звіти:
 
 - `target/site/jacoco/index.html` — HTML-звіт із переходом до рядків коду;
 - `target/site/jacoco/jacoco.xml` — машинозчитуваний звіт покриття;
 - `target/surefire-reports/` — результати запуску тестів.
 
-JaCoCo у фазі `verify` вимагає щонайменше **60% покриття рядків кожного сервісного
-класу** в `application` та підпакетах. Рекомендований завданням рівень — **80%**.
-За результатом повного локального запуску: ProductService, CatalogService і
-CatalogRetryPredicate мають 100% покриття рядків та гілок, ProductController —
-100% рядків. Покриття рядків усього проєкту — 83,4%; непокриті класи залишаються у звіті.
+JaCoCo у фазі `verify` вимагає щонайменше **80% покриття рядків усього проєкту**.
+Показники в таблиці вище описують початкові тести ЛР2; актуальний склад і покриття
+включають нові API- та PostgreSQL-тести ЛР3 і доступні у звітах збірки.
 
 ## GitHub Actions і здача ЛР2
 
 [`.github/workflows/pull_request.yml`](.github/workflows/pull_request.yml)
 адаптований із (https://github.com/Ekatereana/intergalactic-market-java-course/pull/1)
 під Maven Wrapper і Temurin Java 25.
-Workflow запускається після push у `lab-2-tests` та для PR у `lab1-fixes`,
+Workflow запускається після push у будь-яку гілку та для PR у `lab1-fixes`,
 `main` або `master`. Він виконує `clean verify`, перевіряє наявність HTML/XML
 звіту JaCoCo та додає таблицю покриття до підсумку запуску.
 
@@ -75,7 +83,7 @@ Workflow запускається після push у `lab-2-tests` та для P
 
 Артефакти зберігаються 14 днів і завантажуються також після невдалих перевірок,
 якщо відповідні файли встигли створитися.
-Непройдені тести, недостатнє покриття сервісу або відсутній звіт роблять pipeline червоним.
+Непройдені тести, покриття рядків проєкту нижче 80% або відсутній звіт роблять pipeline червоним.
 
 Поки ЛР1 не отримала апрув, PR другої лабораторної має напрямок
 `lab-2-tests` → `lab1-fixes`. Злиття виконується лише після дозволу викладача.
@@ -163,7 +171,7 @@ ValidationError залишається DTO одного порушення; erro
   CatalogService із зовнішнім запитом, обробкою помилок і окремим методом перевірки відповіді.
   application.catalog.dto.CatalogProductDto використовують сервіс і контролер.
 - api: контролер, DTO локального API, Jakarta-валідація, MapStruct ProductMapper та handler.
-- infrastructure.persistence: ProductRepository поруч з InMemoryProductRepository.
+- infrastructure.persistence: ProductRepository поруч з JpaProductRepository.
   Сервіс залежить від інтерфейсу; сховище — синхронізований змінюваний LinkedHashMap.
 - infrastructure.catalog: створення RestClient і ввімкнення Spring resilience.
 
@@ -172,11 +180,9 @@ MapStruct генерує ProductMapperImpl у target/generated-sources/annotatio
 Cart і Order не мають додаткових API чи workflow. JPA, Hibernate ORM, Spring Data і БД не використовуються.
 Hibernate Validator є реалізацією Jakarta Bean Validation, а не ORM.
 
-## Mock-дані й зовнішній каталог
+## Постійні дані й зовнішній каталог
 
-При старті: 00000000-0000-0000-0000-000000000001 — Star Antigravity Yarn;
-00000000-0000-0000-0000-000000000002 — Galaxy Cosmic Milk;
-00000000-0000-0000-0000-000000000003 — Comet Collar. Перезапуск відновлює mock-дані.
+Товари зберігаються в PostgreSQL; перезапуск застосунку зберігає дані.
 
 [DummyJSON](https://dummyjson.com/docs/products) читається через GET /products/{id}.
 Товари не зберігаються локально; повертаються id, title, description, price.
@@ -192,7 +198,7 @@ CATALOG_BASE_URL дозволяє використати контрольова�
 
 ## Логування і ручна перевірка
 
-SLF4J: початкове наповнення сховища й успішні зміни товарів — INFO; читання, пагінація,
+SLF4J: успішні зміни товарів — INFO; читання, пагінація,
 зовнішні запити та їхня тривалість — DEBUG; валідація, збої спроб і повтори з номером/затримкою — WARN;
 остаточні зовнішні та неочікувані збої — ERROR зі stack trace у handler. Відсутній ресурс — INFO.
 Повні товари й email продавців у повідомлення не додаються. Пакет застосунку налаштований на DEBUG;

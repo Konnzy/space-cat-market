@@ -1,6 +1,8 @@
 package com.market.spacecatmarket.api.error;
 
 import com.market.spacecatmarket.application.InvalidCursorException;
+import com.market.spacecatmarket.application.ResourceNotFoundException;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.market.spacecatmarket.application.ProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogProductNotFoundException;
 import com.market.spacecatmarket.application.catalog.CatalogUnavailableException;
@@ -121,7 +123,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return validation(errors, request);
     }
 
-    @ExceptionHandler({ProductNotFoundException.class, CatalogProductNotFoundException.class})
+    @ExceptionHandler({ProductNotFoundException.class, CatalogProductNotFoundException.class, ResourceNotFoundException.class})
     public ResponseEntity<Object> handleNotFound(RuntimeException exception, WebRequest request) {
         log.info("Resource not found: path={}, detail={}", requestPath(request), exception.getMessage());
         return problem(HttpStatus.NOT_FOUND, "not-found", "Product not found", exception.getMessage(), request);
@@ -132,6 +134,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.error("External catalog request failed: path={}", requestPath(request), exception);
         return problem(HttpStatus.BAD_GATEWAY, "external-catalog", "External catalog unavailable",
                 exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Object> handleConflict(DataIntegrityViolationException exception, WebRequest request) {
+        return problem(HttpStatus.CONFLICT, "data-conflict", "Data conflict",
+                "The operation violates a uniqueness or relationship constraint.", request);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Object> handleBusinessValidation(IllegalArgumentException exception, WebRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "business-validation", "Invalid operation", exception.getMessage(), request);
     }
 
     @ExceptionHandler(Exception.class)

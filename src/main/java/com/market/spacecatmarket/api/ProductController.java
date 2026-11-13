@@ -21,6 +21,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.market.spacecatmarket.application.dto.ProductFilter;
+import com.market.spacecatmarket.domain.Category;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.util.UUID;
 
@@ -46,8 +49,16 @@ public class ProductController {
     @GetMapping
     public ProductPageResponse findAll(@RequestParam(defaultValue = "0") @Min(0) int page,
                                        @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-                                       @RequestParam(required = false) UUID cursor) {
-        return productMapper.toProductPageDto(productService.findAll(new PaginationRequest(page, size, cursor)));
+                                       @RequestParam(required = false) UUID cursor,
+                                       @RequestParam(required = false) String name,
+                                       @RequestParam(required = false) Category category,
+                                       @RequestParam(required = false) BigDecimal minPrice,
+                                       @RequestParam(required = false) BigDecimal maxPrice,
+                                       @RequestParam(required = false) Boolean inStock,
+                                       @RequestParam(defaultValue = "ID") ProductFilter.Sort sort,
+                                       @RequestParam(defaultValue = "ASC") ProductFilter.Direction direction) {
+        return productMapper.toProductPageDto(productService.findAll(new PaginationRequest(page, size, cursor),
+                new ProductFilter(name, category, minPrice, maxPrice, inStock, sort, direction)));
     }
 
     @GetMapping("/{id}")

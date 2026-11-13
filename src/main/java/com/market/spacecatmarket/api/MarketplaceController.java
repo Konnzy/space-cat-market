@@ -30,6 +30,7 @@ public class MarketplaceController {
     public record CustomerView(Long id, String name, String email) { }
     public record OrderLine(@NotNull UUID productId, @Positive int quantity) { }
     public record OrderRequest(@NotNull @Positive Long customerId, @NotEmpty List<@NotNull @Valid OrderLine> items) { }
+    public record ItemsRequest(@NotEmpty List<@NotNull @Valid OrderLine> items) { }
     public record StatusRequest(@NotNull OrderStatus status) { }
     public record SalesView(UUID productId, String productName, Long unitsSold) { }
     public record StockRequest(@Positive int quantity) { }
@@ -78,6 +79,11 @@ public class MarketplaceController {
     public OrderService.OrderView order(@PathVariable long id) { return orders.findById(id); }
     @GetMapping("/orders/by-number/{number}")
     public OrderService.OrderView orderByNumber(@PathVariable String number) { return orders.findByOrderNumber(number); }
+    @PutMapping("/orders/{id}/items")
+    public OrderService.OrderView replaceItems(@PathVariable long id, @Valid @RequestBody ItemsRequest request) {
+        return orders.replaceItems(id, request.items().stream()
+            .map(i -> new OrderService.Line(i.productId(), i.quantity())).toList());
+    }
     @PutMapping("/orders/{id}/status")
     public OrderService.OrderView updateStatus(@PathVariable long id, @Valid @RequestBody StatusRequest request) {
         return orders.updateStatus(id, request.status());

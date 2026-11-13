@@ -36,6 +36,12 @@ public class ProductEntity {
     @Column(name = "seller_email", nullable = false, length = 254)
     private String sellerEmail;
 
+    @Column(nullable = false)
+    private boolean active = true;
+
+    public boolean isActive() { return active; }
+    public void archive() { active = false; }
+
     protected ProductEntity() { }
 
     public Long getId() { return id; }
@@ -70,7 +76,8 @@ public class ProductEntity {
     }
     public void addStock(int quantity) {
         if (quantity <= 0) throw new IllegalArgumentException("Stock addition must be positive");
-        stockQuantity = Math.addExact(stockQuantity, quantity);
+        if (quantity > Integer.MAX_VALUE - stockQuantity) throw new IllegalArgumentException("Stock limit exceeded");
+        stockQuantity += quantity;
     }
     public void reserve(int quantity) {
         if (quantity <= 0 || quantity > stockQuantity) throw new IllegalArgumentException("Insufficient stock or invalid quantity");

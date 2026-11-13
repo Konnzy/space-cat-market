@@ -10,6 +10,7 @@ import com.market.spacecatmarket.application.catalog.CatalogService;
 import com.market.spacecatmarket.application.catalog.CatalogUnavailableException;
 import com.market.spacecatmarket.application.catalog.dto.CatalogProductDto;
 import com.market.spacecatmarket.application.dto.PaginationRequest;
+import com.market.spacecatmarket.application.dto.ProductFilter;
 import com.market.spacecatmarket.domain.Category;
 import com.market.spacecatmarket.domain.Product;
 import org.junit.jupiter.api.Test;
@@ -119,14 +120,14 @@ class ProductControllerTest {
     void findAll_whenParametersAreMissing_usesDefaults() throws Exception {
         PaginationRequest pagination = new PaginationRequest(0, 20, null);
         ProductPage page = new ProductPage(List.of(sampleProduct()), 0, 20, 1, null);
-        when(productService.findAll(pagination)).thenReturn(page);
+        when(productService.findAll(pagination, ProductFilter.defaults())).thenReturn(page);
 
         mockMvc.perform(get(BASE))
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(APPLICATION_JSON))
                 .andExpect(content().json(objectMapper.writeValueAsString(page)));
 
-        verify(productService).findAll(pagination);
+        verify(productService).findAll(pagination, ProductFilter.defaults());
         verifyNoInteractions(catalogService);
     }
 
@@ -135,13 +136,13 @@ class ProductControllerTest {
         UUID cursor = new UUID(0, 2);
         PaginationRequest pagination = new PaginationRequest(2, 1, cursor);
         ProductPage page = new ProductPage(List.of(sampleProduct()), 0, 1, 5, ID);
-        when(productService.findAll(pagination)).thenReturn(page);
+        when(productService.findAll(pagination, ProductFilter.defaults())).thenReturn(page);
 
         mockMvc.perform(get(BASE).param("page", "2").param("size", "1").param("cursor", cursor.toString()))
                 .andExpect(status().isOk())
                 .andExpect(content().json(objectMapper.writeValueAsString(page)));
 
-        verify(productService).findAll(pagination);
+        verify(productService).findAll(pagination, ProductFilter.defaults());
         verifyNoInteractions(catalogService);
     }
 
@@ -343,13 +344,13 @@ class ProductControllerTest {
     void findAll_whenPaginationIsWithinBounds_acceptsParameters(int page, int size) throws Exception {
         PaginationRequest pagination = new PaginationRequest(page, size, null);
         ProductPage result = new ProductPage(List.of(), page, size, 0, null);
-        when(productService.findAll(pagination)).thenReturn(result);
+        when(productService.findAll(pagination, ProductFilter.defaults())).thenReturn(result);
 
         mockMvc.perform(get(BASE).param("page", Integer.toString(page)).param("size", Integer.toString(size)))
                 .andExpect(status().isOk())
                 .andExpect(content().json(objectMapper.writeValueAsString(result)));
 
-        verify(productService).findAll(pagination);
+        verify(productService).findAll(pagination, ProductFilter.defaults());
         verifyNoInteractions(catalogService);
     }
 
@@ -410,14 +411,14 @@ class ProductControllerTest {
     void findAll_whenCursorIsUnknown_returnsValidationProblem() throws Exception {
         UUID cursor = new UUID(0, 99);
         PaginationRequest pagination = new PaginationRequest(0, 20, cursor);
-        when(productService.findAll(pagination)).thenThrow(new InvalidCursorException(cursor));
+        when(productService.findAll(pagination, ProductFilter.defaults())).thenThrow(new InvalidCursorException(cursor));
 
         mockMvc.perform(get(BASE).param("cursor", cursor.toString()))
                 .andExpect(validationProblem("cursor", BASE))
                 .andExpect(jsonPath("$.errors[0].message")
                         .value("must refer to an existing product; cursor '%s' is unknown".formatted(cursor)));
 
-        verify(productService).findAll(pagination);
+        verify(productService).findAll(pagination, ProductFilter.defaults());
         verifyNoInteractions(catalogService);
     }
 
@@ -507,4 +508,25 @@ class ProductControllerTest {
 
     private record InvalidField(String field, Object value) {
     }
+
+    @Test
+    void filtersAndSortingArePassedToService() throws Exception {
+        var pagination = new PaginationRequest(0, 20, null);
+        var filter = new ProductFilter("yarn", Category.TOYS, new BigDecimal("5"), new BigDecimal("20"),
+                true, ProductFilter.Sort.PRICE, ProductFilter.Direction.DESC);
+        when(productService.findAll(pagination, filter)).thenReturn(new ProductPage(List.of(), 0, 20, 0, null));
+        mockMvc.perform(get(BASE).param("name", "yarn").param("category", "TOYS")
+                .param("minPrice", "5").param("maxPrice", "20").param("inStock", "true")
+                .param("sort", "PRICE").param("direction", "DESC"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        verify(productService).findAll(pagination, filter);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"sort,INVALID", "direction,INVALID", "category,INVALID", "inStock,invalid", "minPrice,-1", "maxPrice,-1"})
+    void invalidCatalogFiltersReturnBadRequest(String field, String value) throws Exception {
+        mockMvc.perform(get(BASE).param(field, value)).andExpect(status().isBadRequest());
+        verifyNoInteractions(productService);
+    }
+
 }

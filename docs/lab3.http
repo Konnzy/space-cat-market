@@ -31,6 +31,12 @@ Content-Type: application/json
 ### 5. Пошук за Natural ID.
 GET {{base}}/orders/by-number/{{orderNumber}}
 
+### 5a. До завершення змініть кількість у замовленні NEW.
+PUT {{base}}/orders/{{orderId}}/items
+Content-Type: application/json
+
+{"items":[{"productId":"{{productId}}","quantity":3}]}
+
 ### 6. Завершіть замовлення, щоб воно потрапило до звіту.
 PUT {{base}}/orders/{{orderId}}/status
 Content-Type: application/json
@@ -42,3 +48,21 @@ GET {{base}}/reports/popular-products?from=2020-01-01T00:00:00Z&to=2100-01-01T00
 
 ### 8. Перегляньте категорії.
 GET {{base}}/categories
+
+### Пошук, фільтрація та сортування. Для nextCursor повторіть усі параметри.
+GET {{base}}/products?name=star&category=TOYS&minPrice=5&maxPrice=50&inStock=true&sort=PRICE&direction=ASC&size=2
+
+### Продажі за категоріями.
+GET {{base}}/reports/category-sales?from=2020-01-01T00:00:00Z&to=2100-01-01T00:00:00Z
+
+### Виручка за історичними цінами.
+GET {{base}}/reports/revenue?from=2020-01-01T00:00:00Z&to=2100-01-01T00:00:00Z
+
+### Найактивніші покупці.
+GET {{base}}/reports/top-customers?from=2020-01-01T00:00:00Z&to=2100-01-01T00:00:00Z
+
+### Активні товари без завершених продажів у періоді.
+GET {{base}}/reports/unsold-products?from=2020-01-01T00:00:00Z&to=2100-01-01T00:00:00Z
+
+### Архівуйте товар: історія лишається, нові покупки заборонені.
+DELETE {{base}}/products/{{productId}}

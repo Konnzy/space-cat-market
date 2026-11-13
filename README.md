@@ -23,7 +23,7 @@ Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
 
 За наявності закешованих залежностей: `.\mvnw.cmd -o clean verify`.
 API: `http://localhost:8080/api/v1/products`.
-Остання перевірка ЛР3: **161 тест, 0 помилок/пропусків, 93,25% рядків і 80,52% гілок**.
+Остання перевірка ЛР3: **175 тестів, 0 помилок/пропусків, 94,67% рядків і 87,50% гілок**.
 Докладний результат і склад інтеграційних тестів — у [docs/lab3.md](docs/lab3.md).
 Команда `clean verify` компілює застосунок, запускає тести, створює звіт JaCoCo,
 перевіряє щонайменше 80% покриття рядків усього проєкту й пакує застосунок.
@@ -88,6 +88,17 @@ Workflow запускається після push у будь-яку гілку 
 Поки ЛР1 не отримала апрув, PR другої лабораторної має напрямок
 `lab-2-tests` → `lab1-fixes`. Злиття виконується лише після дозволу викладача.
 
+## Розширення ЛР3
+
+- Пагінація й пошук у PostgreSQL: фільтри та стабільний keyset за ціною, назвою або ID.
+- PUT `/api/v1/orders/{id}/items`: додавання, видалення й зміна кількості позицій NEW з атомарною корекцією залишків.
+- DELETE товару архівує його; архівні товари приховані з каталогу та недоступні для нових покупок.
+- JPQL projections: продажі за категоріями, виручка, найактивніші покупці та товари без продажів.
+- Інтеграційні тести конкурентних операцій, rollback і граничних дат.
+
+Детальна поведінка й параметри описані в [docs/lab3.md](docs/lab3.md).
+Контракт нових endpoint: [lab3-extensions.json](src/main/resources/api-specs/lab3-extensions.json).
+
 ## Контракт і CRUD
 
 [OpenAPI 3.0.3](src/main/resources/api-specs/cosmo-cats-market.yml) містить конкретні examples
@@ -99,7 +110,7 @@ Workflow запускається після push у будь-яку гілку 
 | GET | `/api/v1/products?page=0&size=20` | `200`, сторінка товарів |
 | GET | `/api/v1/products/{id}` | `200` або `404` |
 | PUT | `/api/v1/products/{id}` | `200` або `404`, заміна всіх редагованих полів |
-| DELETE | `/api/v1/products/{id}` | `204` без тіла або `404` |
+| DELETE | `/api/v1/products/{id}` | Архівування: `204` без тіла або `404`; історія покупок зберігається |
 | GET | `/api/v1/products/external/{externalId}` | `200`, товар каталогу; `404` або `502` для збоїв |
 
 Тіло POST/PUT:
@@ -120,13 +131,15 @@ star, galaxy або comet без урахування регістру (`@Cosmic
 `category`: TOYS, FOOD або ACCESSORIES. `sellerEmail`: непорожня адреса до 254 символів,
 перевіряється `@Email`. POST генерує UUID, PUT зберігає ID з URL. ULID залишився навчальною рекомендацією.
 
-## Пагінація
+## Пагінація, пошук і фільтрація
 
 Контролер перевіряє параметри `page` і `size` через `@Min` / `@Max` безпосередньо в сигнатурі методу,
 потім передає їх і необов'язковий `cursor` до сервісу через спільний `PaginationRequest`.
 Початкові значення: page=0, size=20; межі: page >= 0, size від 1 до 100.
-Без cursor працює offset page/size у порядку додавання товарів.
-З cursor результати починаються після вказаного UUID в тому самому порядку; page ігнорується,
+Пагінація виконується в PostgreSQL через Criteria-запити з обмеженням size+1.
+Без cursor працює offset page/size; типове сортування — ID за зростанням.
+Доступні name, category, minPrice, maxPrice, inStock, sort=ID|NAME|PRICE та direction=ASC|DESC.
+З cursor працює keyset за обраним полем та ID, без завантаження всього каталогу; page ігнорується,
 а page у відповіді дорівнює 0. Size діє в обох режимах.
 
 ```text
@@ -134,8 +147,8 @@ GET /api/v1/products?size=1
 GET /api/v1/products?size=1&cursor=00000000-0000-0000-0000-000000000001
 ```
 
-Envelope: content, page, size, totalElements, nextCursor. TotalElements — розмір усього локального
-каталогу в знімку запиту. NextCursor — останній повернений ID, якщо далі є товари; інакше null.
+Envelope: content, page, size, totalElements, nextCursor. TotalElements — кількість активних товарів
+за всіма фільтрами до межі курсора. Фільтри й сортування слід повторювати з nextCursor. NextCursor — останній повернений ID, якщо далі є товари; інакше null.
 Порожній каталог: `200`, content=[], totalElements=0. Сторінка за межами непорожнього каталогу:
 `200`, content=[], фактичний totalElements. GET списку не має штучного сценарію 404.
 Некоректний, невідомий або видалений cursor повертає 400.
@@ -172,7 +185,7 @@ ValidationError залишається DTO одного порушення; erro
   application.catalog.dto.CatalogProductDto використовують сервіс і контролер.
 - api: контролер, DTO локального API, Jakarta-валідація, MapStruct ProductMapper та handler.
 - infrastructure.persistence: ProductRepository поруч з JpaProductRepository.
-  Сервіс залежить від інтерфейсу; сховище — синхронізований змінюваний LinkedHashMap.
+  Сервіс залежить від інтерфейсу; реалізація працює через Spring Data JPA та PostgreSQL.
 - infrastructure.catalog: створення RestClient і ввімкнення Spring resilience.
 
 MapStruct генерує ProductMapperImpl у target/generated-sources/annotations; ручна реалізація була

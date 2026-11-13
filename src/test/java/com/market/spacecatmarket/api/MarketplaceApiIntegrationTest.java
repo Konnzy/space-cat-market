@@ -50,6 +50,19 @@ class MarketplaceApiIntegrationTest {
             .andExpect(status().isCreated()).andExpect(jsonPath("$.total").value(39.98))
             .andReturn().getResponse().getContentAsString();
         var order = mapper.readTree(orderJson);
+        mvc.perform(put("/api/v1/orders/" + order.get("id").asLong() + "/items")
+            .contentType(APPLICATION_JSON).content("""
+                {"items":[{"productId":"%s","quantity":2}]}
+                """.formatted(productId)))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(39.98));
+        mvc.perform(get("/api/v1/products").param("name", "STAR").param("inStock", "true")
+            .param("sort", "PRICE").param("direction", "DESC"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].id").value(productId));
+        mvc.perform(post("/api/v1/products").contentType(APPLICATION_JSON).content("""
+            {"name":"Star Unsold","description":"An unsold product","price":5.99,
+             "category":"FOOD","sellerEmail":"seller@example.com"}
+            """))
+            .andExpect(status().isCreated());
         mvc.perform(get("/api/v1/orders/by-number/" + order.get("orderNumber").asText()))
             .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].quantity").value(2));
         mvc.perform(put("/api/v1/orders/" + order.get("id").asLong() + "/status")
@@ -64,6 +77,16 @@ class MarketplaceApiIntegrationTest {
             .andExpect(jsonPath("$[0].productName").value("Star Yarn"))
             .andExpect(jsonPath("$[0].unitsSold").value(2))
             .andExpect(jsonPath("$[0].price").doesNotExist());
-        mvc.perform(delete("/api/v1/products/" + productId)).andExpect(status().isConflict());
+        mvc.perform(get("/api/v1/reports/category-sales").param("from", "2000-01-01T00:00:00Z").param("to", "2100-01-01T00:00:00Z"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].revenue").value(39.98));
+        mvc.perform(get("/api/v1/reports/revenue").param("from", "2000-01-01T00:00:00Z").param("to", "2100-01-01T00:00:00Z"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.orderCount").value(1));
+        mvc.perform(get("/api/v1/reports/top-customers").param("from", "2000-01-01T00:00:00Z").param("to", "2100-01-01T00:00:00Z"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].customerName").value("Cosmo"));
+        mvc.perform(get("/api/v1/reports/unsold-products").param("from", "2000-01-01T00:00:00Z").param("to", "2100-01-01T00:00:00Z"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$[0].productName").value("Star Unsold"))
+            .andExpect(jsonPath("$[0].category").value("FOOD"));
+        mvc.perform(delete("/api/v1/products/" + productId)).andExpect(status().isNoContent());
+        mvc.perform(get("/api/v1/products/" + productId)).andExpect(status().isNotFound());
     }
 }

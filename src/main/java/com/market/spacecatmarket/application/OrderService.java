@@ -31,22 +31,60 @@ public class OrderService {
 
     @Transactional
     public OrderView create(long customerId, List<Line> lines) {
-        if (lines == null || lines.isEmpty()) throw new IllegalArgumentException("Order must contain at least one item");
-        if (lines.stream().anyMatch(l -> l == null || l.productId() == null || l.quantity() <= 0)
-                || lines.stream().map(Line::productId).distinct().count() != lines.size()) {
-            throw new IllegalArgumentException("Order items must have unique products and positive quantities");
-        }
+        validateLines(lines);
         CustomerEntity customer = customers.findById(customerId)
             .orElseThrow(() -> new ResourceNotFoundException("Customer", customerId));
         OrderEntity order = new OrderEntity("CC-" + UUID.randomUUID(), customer, Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS));
         // Acquire product locks in a stable order to avoid deadlocks between multi-item orders.
         for (Line line : lines.stream().sorted(Comparator.comparing(Line::productId)).toList()) {
             ProductEntity product = lockedProduct(line.productId());
+            requireActive(product);
             product.reserve(line.quantity());
             order.addItem(product, line.quantity());
         }
         return view(orders.saveAndFlush(order));
     }
+    @Transactional
+    public OrderView replaceItems(long id, List<Line> lines) {
+        validateLines(lines);
+        OrderEntity order = orders.lockById(id).orElseThrow(() -> new ResourceNotFoundException("Order", id));
+        if (order.getStatus() != OrderStatus.NEW) throw new IllegalArgumentException("Only NEW orders can be edited");
+        Map<UUID, OrderItemEntity> existing = new HashMap<>();
+        order.getItems().forEach(i -> existing.put(i.getProduct().getPublicId(), i));
+        Map<UUID, Integer> desired = new HashMap<>();
+        lines.forEach(l -> desired.put(l.productId(), l.quantity()));
+        Set<UUID> affected = new TreeSet<>(existing.keySet());
+        affected.addAll(desired.keySet());
+        for (UUID productId : affected) {
+            ProductEntity product = lockedProduct(productId);
+            OrderItemEntity item = existing.get(productId);
+            int oldQuantity = item == null ? 0 : item.getQuantity();
+            int newQuantity = desired.getOrDefault(productId, 0);
+            int delta = newQuantity - oldQuantity;
+            if (delta > 0) {
+                requireActive(product);
+                product.reserve(delta);
+            } else if (delta < 0) product.addStock(-delta);
+            if (newQuantity == 0) order.getItems().remove(item);
+            else if (item == null) order.addItem(product, newQuantity);
+            else item.changeQuantity(newQuantity);
+        }
+        orders.flush();
+        return view(order);
+    }
+
+    private void validateLines(List<Line> lines) {
+        if (lines == null || lines.isEmpty()) throw new IllegalArgumentException("Order must contain at least one item");
+        if (lines.stream().anyMatch(l -> l == null || l.productId() == null || l.quantity() <= 0)
+                || lines.stream().map(Line::productId).distinct().count() != lines.size()) {
+            throw new IllegalArgumentException("Order items must have unique products and positive quantities");
+        }
+    }
+
+    private void requireActive(ProductEntity product) {
+        if (!product.isActive()) throw new IllegalArgumentException("Archived products cannot be purchased");
+    }
+
     public OrderView findById(long id) { return view(required(id)); }
     public List<OrderView> findAll() {
         return orders.findAll(org.springframework.data.domain.Sort.by("id")).stream().map(this::view).toList();
@@ -85,7 +123,11 @@ public class OrderService {
         return orders.findById(id).orElseThrow(() -> new ResourceNotFoundException("Order", id));
     }
     private ProductEntity lockedProduct(UUID id) {
-        return products.lockByPublicId(id).orElseThrow(() -> new ProductNotFoundException(id));
+        ProductEntity product = products.lockByPublicId(id).orElseThrow(() -> new ProductNotFoundException(id));
+        // Order items may have initialized this entity before we acquired its lock.
+        // Refresh under that lock so a concurrent purchase cannot leave a stale stock value.
+        entityManager.refresh(product, jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        return product;
     }
     private void restoreStock(OrderEntity order) {
         order.getItems().stream().sorted(Comparator.comparing(i -> i.getProduct().getPublicId()))

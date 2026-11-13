@@ -28,6 +28,11 @@ public class OrderItemEntity {
 
     protected OrderItemEntity() { }
 
+    public void changeQuantity(int quantity) {
+        if (quantity <= 0) throw new IllegalArgumentException("Quantity must be positive");
+        this.quantity = quantity;
+    }
+
     public Long getId() { return id; }
 
     public OrderEntity getOrder() { return order; }

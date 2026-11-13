@@ -7,7 +7,7 @@ on:
     branches: [lab1-fixes, main, master]
     types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
-    branches: [lab-2-tests]
+    branches: ['**']
   workflow_dispatch:
 
 permissions:
@@ -40,7 +40,7 @@ jobs:
       - name: Grant execute permission to Maven wrapper
         run: chmod +x ./mvnw
 
-      - name: Build, test and enforce service coverage
+      - name: Build, test with PostgreSQL and enforce project coverage
         run: ./mvnw --batch-mode --no-transfer-progress clean verify
 
       - name: Check coverage reports and write summary
@@ -79,8 +79,8 @@ jobs:
               summary.write("## Tests and JaCoCo coverage\n\n")
               summary.write(f"Tests: {totals['tests']}; failures: {totals['failures']}; "
                             f"errors: {totals['errors']}; skipped: {totals['skipped']}.\n\n")
-              summary.write("Minimum required line coverage: **60% per service class**. "
-                            "Recommended: **80%**.\n\n")
+              summary.write("Minimum required line coverage: **80% for the entire project**. "
+                            "PostgreSQL integration tests run with Testcontainers.\n\n")
               summary.write("| Scope | Lines | Branches |\n| --- | ---: | ---: |\n")
               for name, item in rows:
                   summary.write(f"| {name} | {coverage(item, 'LINE')} | {coverage(item, 'BRANCH')} |\n")

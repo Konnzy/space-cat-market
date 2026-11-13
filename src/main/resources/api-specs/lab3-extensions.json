@@ -1,0 +1,436 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Lab 3 catalog and order extensions",
+    "version": "1.2.0",
+    "description": "Companion to cosmo-cats-market.yml."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080"
+    }
+  ],
+  "paths": {
+    "/api/v1/reports/category-sales": {
+      "get": {
+        "summary": "Sales by category, ordered by units sold",
+        "description": "Only COMPLETED orders in [from, to) count. JPQL projection query.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive period start"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive period end; must be after from"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CategorySales"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid period"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/revenue": {
+      "get": {
+        "summary": "Historical revenue, units and distinct completed orders",
+        "description": "Only COMPLETED orders in [from, to) count. JPQL projection query.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive period start"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive period end; must be after from"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Revenue"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid period"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/top-customers": {
+      "get": {
+        "summary": "Customers ranked by completed orders, then revenue",
+        "description": "Only COMPLETED orders in [from, to) count. JPQL projection query.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive period start"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive period end; must be after from"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CustomerSales"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid period"
+          }
+        }
+      }
+    },
+    "/api/v1/reports/unsold-products": {
+      "get": {
+        "summary": "Active products with no completed sales in the period",
+        "description": "Only COMPLETED orders in [from, to) count. JPQL projection query.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Inclusive period start"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Exclusive period end; must be after from"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Report result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UnsoldProduct"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid period"
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/items": {
+      "put": {
+        "summary": "Replace all items in a NEW order atomically",
+        "description": "Add/remove products or change quantities. Existing positions retain their historical price. Stock corrections commit together; failure rolls back all changes. At least one unique product is required.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Order"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid items, terminal order, insufficient stock or archived product increase"
+          },
+          "404": {
+            "description": "Order or product missing"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ItemsRequest": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "properties": {
+                "productId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "required": [
+                "productId",
+                "quantity"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "Item": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unitPrice": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "productId",
+          "quantity",
+          "unitPrice"
+        ]
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderNumber": {
+            "type": "string"
+          },
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "NEW",
+              "COMPLETED",
+              "CANCELLED"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Item"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "orderNumber",
+          "customerId",
+          "createdAt",
+          "status",
+          "items",
+          "total"
+        ]
+      },
+      "CategorySales": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "categoryName": {
+            "type": "string"
+          },
+          "unitsSold": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revenue": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "category",
+          "categoryName",
+          "unitsSold",
+          "revenue"
+        ]
+      },
+      "Revenue": {
+        "type": "object",
+        "properties": {
+          "revenue": {
+            "type": "number"
+          },
+          "unitsSold": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "orderCount": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "revenue",
+          "unitsSold",
+          "orderCount"
+        ]
+      },
+      "CustomerSales": {
+        "type": "object",
+        "properties": {
+          "customerId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "customerName": {
+            "type": "string"
+          },
+          "orderCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unitsSold": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "revenue": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "customerId",
+          "customerName",
+          "orderCount",
+          "unitsSold",
+          "revenue"
+        ]
+      },
+      "UnsoldProduct": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "productName": {
+            "type": "string"
+          },
+          "category": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "productId",
+          "productName",
+          "category"
+        ]
+      }
+    }
+  }
+}

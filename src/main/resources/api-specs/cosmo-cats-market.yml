@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
   title: Cosmo Cats Intergalactic Marketplace API
-  version: 1.1.0
+  version: 1.2.0
   description: |
-    Laboratory API for Product CRUD backed by in-memory mock data.
-    Data resets when the application restarts. PUT replaces all editable fields
+    PostgreSQL-backed catalog managed by Liquibase and Spring Data JPA.
+    DELETE archives products and preserves purchase history. PUT replaces all editable fields
     of an existing product and never creates a missing product.
-    Pagination is zero-based, in insertion order, without database consistency guarantees.
+    Pagination and filters run in the database; default order is insertion ID ascending.
     The external catalog lookup demonstrates a third-party RestClient integration.
     External products are not persisted and do not use local cosmic-name validation.
     Error responses follow RFC 9457 (https://www.rfc-editor.org/rfc/rfc9457).
@@ -28,10 +28,12 @@ paths:
         An empty catalog and a page beyond the available products return 200 with
         empty content and the current totalElements. This collection endpoint does not return 404.
         Without cursor, page/size select an offset page. With cursor, results start
-        after that existing product in insertion order; page is ignored and the
+        after that visible product under the selected sort; page is ignored and the
         response page is 0. nextCursor is the last returned ID when more products
-        exist, otherwise null. Unknown or deleted cursors return 400.
-        Pagination uses an in-memory snapshot and has no database consistency guarantees.
+        exist, otherwise null. Unknown, archived or filtered-out cursors return 400.
+        Sort is ID, NAME or PRICE; direction is ASC or DESC. Ties use insertion ID.
+        Reuse filters and sort with nextCursor. Catalog values are live, not a cross-request snapshot.
+        totalElements counts all matching active products before the cursor boundary.
       parameters:
         - name: page
           in: query
@@ -61,6 +63,30 @@ paths:
             type: string
             format: uuid
             example: 00000000-0000-0000-0000-000000000001
+        - name: name
+          in: query
+          description: Case-insensitive literal substring, with percent and underscore treated literally.
+          schema: {type: string}
+        - name: category
+          in: query
+          schema: {type: string, enum: [TOYS, FOOD, ACCESSORIES]}
+        - name: minPrice
+          in: query
+          description: Inclusive lower bound; must not exceed maxPrice.
+          schema: {type: number, minimum: 0}
+        - name: maxPrice
+          in: query
+          schema: {type: number, minimum: 0}
+        - name: inStock
+          in: query
+          description: True selects stock > 0; false selects stock = 0.
+          schema: {type: boolean}
+        - name: sort
+          in: query
+          schema: {type: string, enum: [ID, NAME, PRICE], default: ID}
+        - name: direction
+          in: query
+          schema: {type: string, enum: [ASC, DESC], default: ASC}
       responses:
         '200':
           description: Requested product page.
@@ -78,7 +104,7 @@ paths:
                 cursorPage:
                   $ref: '#/components/examples/CursorPage'
         '400':
-          description: Invalid pagination values, malformed UUID cursor or unknown/deleted cursor.
+          description: Invalid pagination values, malformed UUID cursor or unknown/archived/filtered-out cursor.
           content:
             application/problem+json:
               schema:
@@ -94,7 +120,7 @@ paths:
       tags: [Products]
       operationId: createProduct
       summary: Create a product
-      description: Assigns a new UUID and stores the validated product in memory.
+      description: Assigns a new UUID and stores the validated product in PostgreSQL with zero initial stock.
       requestBody:
         $ref: '#/components/requestBodies/ProductInput'
       responses:
@@ -187,10 +213,10 @@ paths:
     delete:
       tags: [Products]
       operationId: deleteProduct
-      summary: Delete a product by UUID
+      summary: Archive a product by UUID
       responses:
         '204':
-          description: Product deleted. The response has no body.
+          description: Product archived, hidden from catalog and unavailable for new purchases. History is preserved. No response body.
         '400':
           description: Product ID is not a UUID.
           content:
@@ -351,7 +377,7 @@ components:
           type: integer
           format: int64
           minimum: 0
-          description: Total number of local products in the snapshot used for this request.
+          description: Total number of active products matching all filters, before the cursor boundary.
         nextCursor:
           type: string
           format: uuid

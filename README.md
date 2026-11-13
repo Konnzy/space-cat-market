@@ -1,229 +1,44 @@
-# Cosmo Cats Intergalactic Marketplace — лабораторні 1–3
+# Cosmo Cats Intergalactic Marketplace - Data Bases
 
-Spring Boot 4.1.1, Java 25, Maven Wrapper, MapStruct 1.6.3.
-Гілка `lab1-fixes` містить виправлення self-review.
-Гілка `lab-2-tests` додає автоматичні тести, вимірювання покриття та GitHub Actions.
+Spring Boot 4.1.1, Java 25, PostgreSQL, Liquibase, Spring Data JPA та Testcontainers.
 
-## Лабораторна 3: база даних
+## Частина 1. Проєктування бази даних і міграції Liquibase
 
-Реалізовано PostgreSQL, Liquibase, JPA, транзакції та всі бонуси (+4 за умовою).
-Детальні схема, пояснення 3NF, міграції, API та тести: [docs/lab3.md](docs/lab3.md).
-Приклад повного сценарію: [docs/lab3.http](docs/lab3.http).
-Для запуску застосунку спочатку виконайте `docker compose up -d --wait`.
-Для тестів достатньо запущеного Docker: Testcontainers створює власну БД.
+Спроєктовано PostgreSQL-базу в 3NF із п’яти таблиць:
 
-## Збірка та запуск
+- `customers` — покупці та їхні унікальні email.
+- `categories` — коди й назви категорій товарів.
+- `products` — товари, поточні ціни, залишки, категорії та стан архівування.
+- `orders` — покупець, унікальний номер, дата й статус замовлення.
+- `order_details` — товари замовлення, кількість і ціна на момент оформлення.
 
-З кореня проєкту у PowerShell:
+Через Liquibase реалізовано версіоноване створення таблиць, sequence, зв’язків, індексів і перевірок цілісності. Додано унікальність email покупця, номера замовлення та назви товару в межах категорії. Окрема міграція додає архівування товарів зі збереженням історії покупок.
+
+## Частина 2. Доступ до даних і бізнес-логіка зі Spring Data JPA
+
+Реалізовано JPA-сутності, репозиторії та CRUD для товарів, категорій і замовлень. Сервісний шар використовує `@Transactional`. Оформлення, редагування позицій і скасування замовлень атомарно змінюють залишки. Песимістичні блокування захищають від конфліктів паралельних операцій.
+
+Пагінація, курсорні вибірки, пошук, фільтрація та сортування товарів виконуються в БД. Через JPQL і projections реалізовано звіти про популярні товари, продажі за категоріями, виручку, найактивніших покупців і товари без продажів.
+
+Для додаткових вимог реалізовано унікальність назви товару в категорії, Natural ID замовлення та projections із JPQL-фільтрацією й сортуванням.
+
+## Частина 3. Інтеграційне тестування з Docker і Testcontainers та покриття коду
+
+Налаштовано інтеграційні тести з PostgreSQL у Docker через Testcontainers. Перевірено міграції, CRUD, обмеження, пагінацію, фільтри, архівування, Natural ID, звіти, rollback і конкурентні зміни залишків.
+
+За результатом запуску `clean verify` успішно пройшли **175 тестів**, без помилок і пропусків. Покриття JaCoCo становить **94,67% рядків** і **87,50% гілок**. У CI налаштовано перевірку мінімум **80% покриття рядків**.
+
+Для запуску тестів потрібні JDK 25 і запущений Docker:
 
 ```powershell
 .\mvnw.cmd clean verify
+```
+
+Для локального запуску застосунку:
+
+```powershell
+docker compose up -d --wait
 .\mvnw.cmd spring-boot:run
 ```
 
-За наявності закешованих залежностей: `.\mvnw.cmd -o clean verify`.
-API: `http://localhost:8080/api/v1/products`.
-Остання перевірка ЛР3: **175 тестів, 0 помилок/пропусків, 94,67% рядків і 87,50% гілок**.
-Докладний результат і склад інтеграційних тестів — у [docs/lab3.md](docs/lab3.md).
-Команда `clean verify` компілює застосунок, запускає тести, створює звіт JaCoCo,
-перевіряє щонайменше 80% покриття рядків усього проєкту й пакує застосунок.
-
-## Лабораторна 2: автоматичні тести
-
-Тестові класи розташовані в `src/test/java/com/market/spacecatmarket`.
-Параметризовані випадки враховуються як окремі сценарії запуску:
-
-| Клас | Сценарії | Що перевіряється |
-| --- | ---: | --- |
-| ProductServiceTest | 16 | CRUD, помилки, offset- і cursor-пагінація; репозиторій підмінений Mockito |
-| CatalogServiceTest | 20 | HTTP-відповіді WireMock, JSON, помилки, відновлення і вичерпання retry |
-| ProductControllerTest | 102 | MockMvc, CRUD, валідація полів і параметрів, CosmicWordCheck, ProblemDetail |
-| Разом | 138 | Без помилок і пропусків |
-
-Контролерні тести використовують справжні Jakarta-валідацію, MapStruct-мапер і
-обробник помилок, а сервіси підміняють через `@MockitoBean`.
-WireMock запускає локальний HTTP-сервер на випадковому порту; `RestClient`
-звертається до нього. Реальні зовнішні API для цих тестів не потрібні. Нові інтеграційні тести ЛР3 використовують PostgreSQL у Testcontainers.
-`CatalogService` створюється через Spring, тому тести перевіряють роботу `@Retryable`.
-
-Запуск усіх тестів або окремого класу у PowerShell:
-
-```powershell
-.\mvnw.cmd test
-.\mvnw.cmd -Dtest=ProductServiceTest test
-.\mvnw.cmd -Dtest=CatalogServiceTest test
-.\mvnw.cmd -Dtest=ProductControllerTest test
-.\mvnw.cmd clean verify
-```
-
-У Linux/macOS: `./mvnw --batch-mode --no-transfer-progress clean verify`.
-Після `clean verify` доступні звіти:
-
-- `target/site/jacoco/index.html` — HTML-звіт із переходом до рядків коду;
-- `target/site/jacoco/jacoco.xml` — машинозчитуваний звіт покриття;
-- `target/surefire-reports/` — результати запуску тестів.
-
-JaCoCo у фазі `verify` вимагає щонайменше **80% покриття рядків усього проєкту**.
-Показники в таблиці вище описують початкові тести ЛР2; актуальний склад і покриття
-включають нові API- та PostgreSQL-тести ЛР3 і доступні у звітах збірки.
-
-## GitHub Actions і здача ЛР2
-
-[`.github/workflows/pull_request.yml`](.github/workflows/pull_request.yml)
-адаптований із (https://github.com/Ekatereana/intergalactic-market-java-course/pull/1)
-під Maven Wrapper і Temurin Java 25.
-Workflow запускається після push у будь-яку гілку та для PR у `lab1-fixes`,
-`main` або `master`. Він виконує `clean verify`, перевіряє наявність HTML/XML
-звіту JaCoCo та додає таблицю покриття до підсумку запуску.
-
-У GitHub Actions у завершеному запуску доступні артефакти:
-
-- `jacoco-coverage` — HTML- і XML-звіти JaCoCo;
-- `surefire-test-reports` — результати тестів.
-
-Артефакти зберігаються 14 днів і завантажуються також після невдалих перевірок,
-якщо відповідні файли встигли створитися.
-Непройдені тести, покриття рядків проєкту нижче 80% або відсутній звіт роблять pipeline червоним.
-
-Поки ЛР1 не отримала апрув, PR другої лабораторної має напрямок
-`lab-2-tests` → `lab1-fixes`. Злиття виконується лише після дозволу викладача.
-
-## Розширення ЛР3
-
-- Пагінація й пошук у PostgreSQL: фільтри та стабільний keyset за ціною, назвою або ID.
-- PUT `/api/v1/orders/{id}/items`: додавання, видалення й зміна кількості позицій NEW з атомарною корекцією залишків.
-- DELETE товару архівує його; архівні товари приховані з каталогу та недоступні для нових покупок.
-- JPQL projections: продажі за категоріями, виручка, найактивніші покупці та товари без продажів.
-- Інтеграційні тести конкурентних операцій, rollback і граничних дат.
-
-Детальна поведінка й параметри описані в [docs/lab3.md](docs/lab3.md).
-Контракт нових endpoint: [lab3-extensions.json](src/main/resources/api-specs/lab3-extensions.json).
-
-## Контракт і CRUD
-
-[OpenAPI 3.0.3](src/main/resources/api-specs/cosmo-cats-market.yml) містить конкретні examples
-успішних відповідей та помилок для перегляду у Swagger Editor.
-
-| Метод | Шлях | Результат |
-| --- | --- | --- |
-| POST | `/api/v1/products` | `201`, товар і Location |
-| GET | `/api/v1/products?page=0&size=20` | `200`, сторінка товарів |
-| GET | `/api/v1/products/{id}` | `200` або `404` |
-| PUT | `/api/v1/products/{id}` | `200` або `404`, заміна всіх редагованих полів |
-| DELETE | `/api/v1/products/{id}` | Архівування: `204` без тіла або `404`; історія покупок зберігається |
-| GET | `/api/v1/products/external/{externalId}` | `200`, товар каталогу; `404` або `502` для збоїв |
-
-Тіло POST/PUT:
-
-```json
-{
-  "name": "Star Antigravity Yarn",
-  "description": "A floating yarn ball for intergalactic cats.",
-  "price": 19.99,
-  "category": "TOYS",
-  "sellerEmail": "toys@cosmo-cats.market"
-}
-```
-
-Усі поля обов'язкові й не можуть бути null. `name`: 3–100 символів, містить окреме слово
-star, galaxy або comet без урахування регістру (`@CosmicWordCheck`). `description`: 1–1000
-символів, не лише пробіли. `price`: більше 0, до 10 цифр у цілій частині й до 2 після крапки.
-`category`: TOYS, FOOD або ACCESSORIES. `sellerEmail`: непорожня адреса до 254 символів,
-перевіряється `@Email`. POST генерує UUID, PUT зберігає ID з URL. ULID залишився навчальною рекомендацією.
-
-## Пагінація, пошук і фільтрація
-
-Контролер перевіряє параметри `page` і `size` через `@Min` / `@Max` безпосередньо в сигнатурі методу,
-потім передає їх і необов'язковий `cursor` до сервісу через спільний `PaginationRequest`.
-Початкові значення: page=0, size=20; межі: page >= 0, size від 1 до 100.
-Пагінація виконується в PostgreSQL через Criteria-запити з обмеженням size+1.
-Без cursor працює offset page/size; типове сортування — ID за зростанням.
-Доступні name, category, minPrice, maxPrice, inStock, sort=ID|NAME|PRICE та direction=ASC|DESC.
-З cursor працює keyset за обраним полем та ID, без завантаження всього каталогу; page ігнорується,
-а page у відповіді дорівнює 0. Size діє в обох режимах.
-
-```text
-GET /api/v1/products?size=1
-GET /api/v1/products?size=1&cursor=00000000-0000-0000-0000-000000000001
-```
-
-Envelope: content, page, size, totalElements, nextCursor. TotalElements — кількість активних товарів
-за всіма фільтрами до межі курсора. Фільтри й сортування слід повторювати з nextCursor. NextCursor — останній повернений ID, якщо далі є товари; інакше null.
-Порожній каталог: `200`, content=[], totalElements=0. Сторінка за межами непорожнього каталогу:
-`200`, content=[], фактичний totalElements. GET списку не має штучного сценарію 404.
-Некоректний, невідомий або видалений cursor повертає 400.
-Зміни між запитами й стабільність DB/keyset-пагінації залишаються матеріалом наступної лабораторної.
-
-## Помилки
-
-Глобальний `@ControllerAdvice` використовує Spring ProblemDetail,
-[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457.html) та application/problem+json:
-
-```json
-{
-  "type": "https://cosmo-cats.market/errors/validation",
-  "title": "Validation failed",
-  "status": 400,
-  "detail": "Field 'price' must be greater than 0.",
-  "instance": "/api/v1/products",
-  "errors": [{"field": "price", "message": "must be greater than 0"}]
-}
-```
-
-ValidationError залишається DTO одного порушення; errors обов'язкове для валідації.
-Для помилок конвертації path-параметрів handler доповнює стандартний ProblemDetail Spring
-нашим errors. Значення категорії формуються з Category.values().
-400: неправильні поля/параметри, cursor або JSON; 404: відсутній товар за ID;
-415: непідтримуваний Content-Type; 502: недоступний каталог або невалідна відповідь;
-500: неочікуваний збій без внутрішніх подробиць у відповіді.
-
-## Організація коду
-
-- domain: незмінні Product, Category, Cart, Order без залежностей від Spring.
-- application: ProductService, ProductPage, спільний application.dto.PaginationRequest;
-  CatalogService із зовнішнім запитом, обробкою помилок і окремим методом перевірки відповіді.
-  application.catalog.dto.CatalogProductDto використовують сервіс і контролер.
-- api: контролер, DTO локального API, Jakarta-валідація, MapStruct ProductMapper та handler.
-- infrastructure.persistence: ProductRepository поруч з JpaProductRepository.
-  Сервіс залежить від інтерфейсу; реалізація працює через Spring Data JPA та PostgreSQL.
-- infrastructure.catalog: створення RestClient і ввімкнення Spring resilience.
-
-MapStruct генерує ProductMapperImpl у target/generated-sources/annotations; ручна реалізація була
-в lab1-draft. Колекція content мапиться автоматично, response DTO створює незмінну копію списку.
-Cart і Order не мають додаткових API чи workflow. JPA, Hibernate ORM, Spring Data і БД не використовуються.
-Hibernate Validator є реалізацією Jakarta Bean Validation, а не ORM.
-
-## Постійні дані й зовнішній каталог
-
-Товари зберігаються в PostgreSQL; перезапуск застосунку зберігає дані.
-
-[DummyJSON](https://dummyjson.com/docs/products) читається через GET /products/{id}.
-Товари не зберігаються локально; повертаються id, title, description, price.
-Космічна валідація не застосовується до зовнішніх назв.
-Налаштування: catalog.base-url, catalog.connect-timeout=2s, catalog.read-timeout=3s.
-CATALOG_BASE_URL дозволяє використати контрольований HTTP-сервер.
-Локальний CRUD і запуск застосунку не звертаються до каталогу.
-
-Вбудований Spring 7 `@Retryable` повторює транспортні збої та HTTP 500/502/503/504:
-дві повторні спроби після початкової, із затримками 200 і 400 мс.
-Інші HTTP-помилки, зокрема 404, та невалідні товари не повторюються.
-404 провайдера стає локальним 404; решта остаточних збоїв — 502.
-
-## Логування і ручна перевірка
-
-SLF4J: успішні зміни товарів — INFO; читання, пагінація,
-зовнішні запити та їхня тривалість — DEBUG; валідація, збої спроб і повтори з номером/затримкою — WARN;
-остаточні зовнішні та неочікувані збої — ERROR зі stack trace у handler. Відсутній ресурс — INFO.
-Повні товари й email продавців у повідомлення не додаються. Пакет застосунку налаштований на DEBUG;
-рівень перевизначається через logging.level.com.market.spacecatmarket.
-
-Перевірка після збірки:
-
-1. POST → GET → PUT → GET → DELETE, Location і сталість UUID.
-2. Page/size, cursor/nextCursor, кінець списку й порожній каталог з 200.
-3. Bean Validation, CosmicWordCheck, неправильні UUID/JSON/category, 404 та 415.
-4. На контрольованому HTTP-сервері: успіх, відновлення після тимчасових збоїв, вичерпання трьох спроб,
-   одиничні 404/інші 4xx/невалідні відповіді, timeout.
-5. У консолі: повідомлення відповідних рівнів, номери повторів і відсутність повних DTO.
-
-Windows Maven Wrapper використовує виправлений PowerShell comment marker.
+Звіт покриття після збірки доступний у `target/site/jacoco/index.html`.

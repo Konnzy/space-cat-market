@@ -3,7 +3,7 @@
   "info": {
     "title": "Lab 3 catalog and order extensions",
     "version": "1.2.0",
-    "description": "Companion to cosmo-cats-market.yml and docs/lab3.md."
+    "description": "Companion to cosmo-cats-market.yml."
   },
   "servers": [
     {
